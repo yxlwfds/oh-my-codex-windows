@@ -1,0 +1,130 @@
+owx — Windows entry for oh-my-codex (Windows-first CLI alias + winmux daemon mgmt)
+
+winmux daemon subcommands (handled by owx itself):
+  owx start             Ensure the Windows mux daemon is running
+  owx stop              Ask the daemon to shut down gracefully
+  owx status            Show daemon pid / pipe path / active sessions
+  owx ls                List active sessions
+  owx capture <pane>    Print recent lines from a pane (--lines N)
+  owx attach <pane>     Stream a pane's output (read-only; Ctrl+C detaches)
+
+All other arguments are forwarded through the shared main CLI. Examples:
+  owx                   Launch interactive Codex
+  owx exec ...          Run exec through the shared CLI
+  owx setup             Run setup through the shared CLI
+
+── owx full help ──────────────────────────────────────────────
+
+oh-my-codex (owx) - Multi-agent orchestration for Codex CLI
+
+Usage:
+  owx           Launch Codex CLI (detached tmux by default on supported interactive terminals)
+  owx exec      Run codex exec non-interactively with OMX AGENTS/overlay injection
+  owx exec inject <session-id> --prompt <text>
+                Queue audited follow-up instructions for a running non-interactive exec job
+  owx imagegen continuation <session-id> --artifact <name>
+                Queue a Stop-hook continuation for built-in image generation turns
+  owx setup     Install skills, prompts, CLI-first config, and scope-specific AGENTS.md
+                (user scope prompts for legacy vs plugin skill delivery when needed)
+  owx update    Check npm now, update the global install immediately, then refresh setup
+  owx uninstall Remove OMX configuration and clean up installed artifacts
+  owx doctor    Check installation health
+  owx list      List packaged OMX skills and native agent prompts (--json)
+  owx cleanup   Kill orphaned OMX MCP server processes and remove stale OMX /tmp directories
+  owx doctor --team  Check team/swarm runtime health diagnostics
+  owx ask       Ask local provider CLI (claude|gemini) and write artifact output
+  owx question  OMX-owned blocking question UI entrypoint for agent-invoked user questions
+  owx adapt     Scaffold OMX-owned adapter foundations for persistent external targets
+  owx resume    Resume a previous interactive Codex session
+  owx explore   Default read-only exploration entrypoint (may adaptively use sparkshell backend)
+  owx session   Search prior local session transcripts and history artifacts
+  owx agents-init [path]
+                Bootstrap lightweight AGENTS.md files for a repo/subtree
+  owx agents    Manage Codex native agent TOML files
+  owx deepinit [path]
+                Alias for agents-init (lightweight AGENTS bootstrap only)
+  owx team      Spawn parallel worker panes in tmux and bootstrap inbox/task state
+  owx ralph     Launch Codex with ralph persistence mode active
+  owx ultragoal Create, resume, and checkpoint durable multi-goal plans over Codex goal mode
+  owx performance-goal
+                Create, hand off, and gate evaluator-backed performance goals
+  owx autoresearch-goal
+                Create, hand off, and gate professor-critic research goals
+  owx autoresearch [DEPRECATED] Use $autoresearch; direct CLI launch removed
+  owx version   Show version information
+  owx tmux-hook Manage tmux prompt injection workaround (init|status|validate|test)
+  owx hooks     Manage hook plugins (init|status|validate|test)
+  owx hud       Show HUD statusline (--watch, --json, --preset=NAME)
+  owx sidecar   Show read-only team/multi-agent visualization (--watch, --json, --tmux)
+  owx state     Read/write/list OMX mode state via CLI parity surface
+  owx notepad   JSON CLI surface for OMX notepad operations
+  owx project-memory
+                JSON CLI surface for OMX project-memory operations
+  owx trace     JSON CLI surface for OMX trace operations
+  owx code-intel
+                JSON CLI surface for OMX code-intel operations
+  owx wiki      JSON CLI surface for OMX wiki operations
+  owx mcp-serve Launch an OMX stdio MCP server target (plugin/runtime use)
+  owx sparkshell <command> [args...]
+  owx sparkshell --tmux-pane <pane-id> [--tail-lines <100-1000>]
+                Run native sparkshell sidecar for direct command execution or explicit tmux-pane summarization
+                (also used as an adaptive backend for qualifying read-only explore tasks)
+  owx help      Show this help message
+  owx status    Show active modes and state
+  owx cancel    Cancel active execution modes
+  owx reasoning Show or set model reasoning effort (low|medium|high|xhigh)
+
+Options:
+  --yolo        Launch Codex in yolo mode (shorthand for: owx launch --yolo)
+  --high        Launch Codex with high reasoning effort
+                (shorthand for: -c model_reasoning_effort="high")
+  --xhigh       Launch Codex with xhigh reasoning effort
+                (shorthand for: -c model_reasoning_effort="xhigh")
+  --madmax      DANGEROUS: bypass Codex approvals and sandbox
+                (alias for --dangerously-bypass-approvals-and-sandbox)
+  --spark       Use the Codex spark model (~1.3x faster) for team workers only
+                Workers get the configured low-complexity team model; leader model unchanged
+  --madmax-spark  spark model for workers + bypass approvals for leader and workers
+                (shorthand for: --spark --madmax)
+  --notify-temp  Enable temporary notification routing for this run/session only
+  --direct       Launch the interactive leader directly without OMX tmux/HUD management
+  --tmux         Launch the interactive leader session in detached tmux
+  --discord      Select Discord provider for temporary notification mode
+  --slack        Select Slack provider for temporary notification mode
+  --telegram     Select Telegram provider for temporary notification mode
+  --custom <name>
+                Select custom/OpenClaw gateway name for temporary notification mode
+  -w, --worktree[=<name>]
+                Launch Codex in a git worktree (detached when no name is given)
+  --force       Force reinstall (overwrite existing files)
+  --merge-agents
+                Merge OMX-managed AGENTS.md sections into an existing AGENTS.md
+                instead of overwriting user-authored content
+  --dry-run     Show what would be done without doing it
+  --plugin      Use Codex plugin delivery for owx setup and remove legacy OMX-managed user/project components
+  --legacy      Use legacy setup delivery for owx setup, overriding persisted plugin mode
+  --install-mode <legacy|plugin>
+                Explicit setup install mode (canonical form; --legacy/--plugin are aliases)
+  --mcp <none|compat>
+                Explicit setup MCP mode (default: none; compat enables first-party MCP compatibility and shared registry sync)
+  --no-mcp      Alias for --mcp=none
+  --with-mcp    Alias for --mcp=compat
+  --keep-config Skip config.toml cleanup during uninstall
+  --purge       Remove .omx/ cache directory during uninstall
+  --verbose     Show detailed output
+  --scope       Setup scope for "owx setup" only:
+                user | project
+
+Launch policy:
+  OMX_LAUNCH_POLICY=auto
+                Use the default policy: detached tmux when supported, direct otherwise
+  OMX_LAUNCH_POLICY=direct
+                Run without OMX tmux/HUD management
+  OMX_LAUNCH_POLICY=tmux
+                Force OMX-managed detached tmux launch
+  OMX_LAUNCH_POLICY=detached-tmux
+                Force OMX-managed detached tmux launch
+  CLI policy flags (--direct/--tmux) override OMX_LAUNCH_POLICY; the last flag before -- wins.
+  Unset or empty OMX_LAUNCH_POLICY returns to auto/default behavior.
+  Config files are intentionally not used for launch policy in this release.
+
