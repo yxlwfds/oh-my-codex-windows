@@ -7,7 +7,7 @@ dist/
 .omc/research/
 .omc/
 .omx/
-
+.qoder/
 # Local agent/worktree artifacts (never commit)
 .claude/
 .claire/

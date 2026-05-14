@@ -1,6 +1,6 @@
 import { execFile } from 'child_process';
 import { existsSync } from 'fs';
-import { mkdir, readFile, writeFile } from 'fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'fs/promises';
 import { join, resolve } from 'path';
 import { promisify } from 'util';
 import { appendTeamCommitHygieneEntries, type TeamOperationalCommitEntry, type TeamOperationalCommitKind } from '../../team/commit-hygiene.js';
@@ -8,6 +8,81 @@ import { appendTeamEvent } from '../../team/state.js';
 import { resolveWorkerTeamStateRoot } from '../../team/state-root.js';
 
 const execFileAsync = promisify(execFile);
+
+// Lock management for concurrent PostToolUse hooks
+const LOCK_RETRY_MS = 25;
+const LOCK_TIMEOUT_MS = 5000;
+const LOCK_STALE_MS = 10000;
+
+function lockOwnerToken(): string {
+  return `${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}`;
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function maybeRecoverStaleLock(lockDir: string, lockStaleMs: number): Promise<boolean> {
+  try {
+    const info = await stat(lockDir);
+    const ageMs = Date.now() - info.mtimeMs;
+    if (ageMs > lockStaleMs) {
+      await rm(lockDir, { recursive: true, force: true });
+      return true;
+    }
+  } catch {
+    // Lock directory doesn't exist or can't be accessed
+  }
+  return false;
+}
+
+async function withPostToolUseLock<T>(
+  stateRoot: string,
+  teamName: string,
+  workerName: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const lockDir = join(stateRoot, 'team', teamName, 'workers', workerName, '.lock.posttooluse');
+  const ownerPath = join(lockDir, 'owner');
+  const ownerToken = lockOwnerToken();
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  
+  await mkdir(join(stateRoot, 'team', teamName, 'workers', workerName), { recursive: true });
+  
+  while (true) {
+    try {
+      await mkdir(lockDir, { recursive: false });
+      try {
+        await writeFile(ownerPath, ownerToken, 'utf8');
+      } catch (error) {
+        await rm(lockDir, { recursive: true, force: true });
+        throw error;
+      }
+      break;
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code !== 'EEXIST') throw error;
+      if (await maybeRecoverStaleLock(lockDir, LOCK_STALE_MS)) continue;
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out acquiring PostToolUse lock for ${teamName}/${workerName}`);
+      }
+      await sleep(LOCK_RETRY_MS);
+    }
+  }
+
+  try {
+    return await fn();
+  } finally {
+    try {
+      const currentOwner = await readFile(ownerPath, 'utf8');
+      if (currentOwner.trim() === ownerToken) {
+        await rm(lockDir, { recursive: true, force: true });
+      }
+    } catch {
+      // Ignore cleanup errors
+    }
+  }
+}
 
 type PostToolUseStatus = 'applied' | 'noop' | 'conflict' | 'skipped';
 type PostToolUseOperationKind = 'auto_checkpoint' | 'worker_clean_rebase' | 'leader_integration_attempt';
@@ -417,112 +492,116 @@ export async function handleTeamWorkerPostToolUseSuccess(
 
     const { teamName, workerName } = parsedWorker;
     const stateRoot = resolvedStateRoot.stateRoot;
-    const worktreePath = resolvedStateRoot.worktreePath || resolve(cwd);
-    if (await readTeamPhaseTerminal(stateRoot, teamName)) {
-      return { handled: false, status: 'skipped', reason: 'terminal_phase', teamName, workerName, stateRoot, worktreePath, operationKinds: [] };
-    }
+    
+    // Use lock to prevent concurrent PostToolUse hook conflicts
+    return await withPostToolUseLock(stateRoot, teamName, workerName, async () => {
+      const worktreePath = resolvedStateRoot.worktreePath || resolve(cwd);
+      if (await readTeamPhaseTerminal(stateRoot, teamName)) {
+        return { handled: false, status: 'skipped', reason: 'terminal_phase', teamName, workerName, stateRoot, worktreePath, operationKinds: [] };
+      }
 
-    const nowIso = new Date().toISOString();
-    await writeHeartbeat(stateRoot, teamName, workerName, nowIso);
+      const nowIso = new Date().toISOString();
+      await writeHeartbeat(stateRoot, teamName, workerName, nowIso);
 
-    const config = await readTeamConfig(stateRoot, teamName);
-    const leaderArtifactCwd = readLeaderArtifactCwd(config, cwd);
-    const workerHeadBefore = await gitHead(cwd);
-    const leaderHeadObserved = await readLeaderHeadObserved(config, cwd);
-    const checkpoint = await checkpointIfEligible(cwd, workerName);
-    const workerHeadAfter = checkpoint.workerHeadAfter;
-    const operationKinds: PostToolUseOperationKind[] = ['auto_checkpoint'];
-    await appendLedger({
-      teamName,
-      workerName,
-      cwd,
-      leaderArtifactCwd,
-      operation: 'auto_checkpoint',
-      status: checkpoint.status,
-      workerHeadBefore,
-      workerHeadAfter,
-      leaderHeadObserved,
-      operationalCommit: checkpoint.checkpointCommit,
-      sourceCommit: workerHeadBefore,
-      detail: checkpoint.reason ? `posttooluse:${checkpoint.reason}` : 'posttooluse',
-    });
-
-    const cleanScaffolding = await classifyCleanScaffolding(cwd, leaderHeadObserved, workerHeadAfter);
-    operationKinds.push('worker_clean_rebase');
-    await appendLedger({
-      teamName,
-      workerName,
-      cwd,
-      leaderArtifactCwd,
-      operation: 'worker_clean_rebase',
-      status: cleanScaffolding.status,
-      workerHeadBefore,
-      workerHeadAfter,
-      leaderHeadObserved,
-      sourceCommit: workerHeadAfter,
-      detail: `posttooluse:${cleanScaffolding.reason}`,
-    });
-
-    if (workerHeadAfter) operationKinds.push('leader_integration_attempt');
-    const dedupeKey = buildDedupeKey({
-      teamName,
-      workerName,
-      workerHeadAfter,
-      operationKind: 'leader_integration_attempt',
-    });
-    const dedupePath = join(stateRoot, 'team', teamName, 'workers', workerName, 'posttooluse-dedupe.json');
-    const marker = await readDedupeMarker(dedupePath);
-
-    if (workerHeadAfter && !marker.keys.includes(dedupeKey)) {
-      await appendLeaderSignal({
-        teamName,
-        workerName,
-        workerHeadBefore,
-        workerHeadAfter,
-        checkpointCommit: checkpoint.checkpointCommit,
-        leaderHeadObserved,
-        outcomeStatus: checkpoint.status,
-        toolUseId: readToolUseId(payload),
-        dedupeKey,
-        worktreePath,
-        leaderArtifactCwd,
-      });
+      const config = await readTeamConfig(stateRoot, teamName);
+      const leaderArtifactCwd = readLeaderArtifactCwd(config, cwd);
+      const workerHeadBefore = await gitHead(cwd);
+      const leaderHeadObserved = await readLeaderHeadObserved(config, cwd);
+      const checkpoint = await checkpointIfEligible(cwd, workerName);
+      const workerHeadAfter = checkpoint.workerHeadAfter;
+      const operationKinds: PostToolUseOperationKind[] = ['auto_checkpoint'];
       await appendLedger({
         teamName,
         workerName,
         cwd,
         leaderArtifactCwd,
-        operation: 'leader_integration_attempt',
+        operation: 'auto_checkpoint',
         status: checkpoint.status,
         workerHeadBefore,
         workerHeadAfter,
         leaderHeadObserved,
-        sourceCommit: workerHeadAfter,
-        detail: `posttooluse:${dedupeKey}`,
+        operationalCommit: checkpoint.checkpointCommit,
+        sourceCommit: workerHeadBefore,
+        detail: checkpoint.reason ? `posttooluse:${checkpoint.reason}` : 'posttooluse',
       });
-      await writeDedupeMarker(dedupePath, {
-        dedupeKey,
-        createdAt: nowIso,
-        toolUseId: readToolUseId(payload),
-        status: checkpoint.status,
-      });
-    }
 
-    return {
-      handled: true,
-      status: checkpoint.status,
-      reason: checkpoint.reason,
-      teamName,
-      workerName,
-      stateRoot,
-      worktreePath,
-      workerHeadBefore,
-      workerHeadAfter,
-      checkpointCommit: checkpoint.checkpointCommit,
-      leaderHeadObserved,
-      operationKinds,
-      dedupeKey,
-    };
+      const cleanScaffolding = await classifyCleanScaffolding(cwd, leaderHeadObserved, workerHeadAfter);
+      operationKinds.push('worker_clean_rebase');
+      await appendLedger({
+        teamName,
+        workerName,
+        cwd,
+        leaderArtifactCwd,
+        operation: 'worker_clean_rebase',
+        status: cleanScaffolding.status,
+        workerHeadBefore,
+        workerHeadAfter,
+        leaderHeadObserved,
+        sourceCommit: workerHeadAfter,
+        detail: `posttooluse:${cleanScaffolding.reason}`,
+      });
+
+      if (workerHeadAfter) operationKinds.push('leader_integration_attempt');
+      const dedupeKey = buildDedupeKey({
+        teamName,
+        workerName,
+        workerHeadAfter,
+        operationKind: 'leader_integration_attempt',
+      });
+      const dedupePath = join(stateRoot, 'team', teamName, 'workers', workerName, 'posttooluse-dedupe.json');
+      const marker = await readDedupeMarker(dedupePath);
+
+      if (workerHeadAfter && !marker.keys.includes(dedupeKey)) {
+        await appendLeaderSignal({
+          teamName,
+          workerName,
+          workerHeadBefore,
+          workerHeadAfter,
+          checkpointCommit: checkpoint.checkpointCommit,
+          leaderHeadObserved,
+          outcomeStatus: checkpoint.status,
+          toolUseId: readToolUseId(payload),
+          dedupeKey,
+          worktreePath,
+          leaderArtifactCwd,
+        });
+        await appendLedger({
+          teamName,
+          workerName,
+          cwd,
+          leaderArtifactCwd,
+          operation: 'leader_integration_attempt',
+          status: checkpoint.status,
+          workerHeadBefore,
+          workerHeadAfter,
+          leaderHeadObserved,
+          sourceCommit: workerHeadAfter,
+          detail: `posttooluse:${dedupeKey}`,
+        });
+        await writeDedupeMarker(dedupePath, {
+          dedupeKey,
+          createdAt: nowIso,
+          toolUseId: readToolUseId(payload),
+          status: checkpoint.status,
+        });
+      }
+
+      return {
+        handled: true,
+        status: checkpoint.status,
+        reason: checkpoint.reason,
+        teamName,
+        workerName,
+        stateRoot,
+        worktreePath,
+        workerHeadBefore,
+        workerHeadAfter,
+        checkpointCommit: checkpoint.checkpointCommit,
+        leaderHeadObserved,
+        operationKinds,
+        dedupeKey,
+      };
+    });
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return { handled: false, status: 'skipped', reason: `bridge_error:${reason}`, operationKinds: [] };

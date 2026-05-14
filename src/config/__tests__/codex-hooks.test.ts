@@ -637,8 +637,16 @@ describe("codex hooks helpers", () => {
     const postCompact = config.hooks.PostCompact as Array<{ hooks?: Array<{ command?: string }> }>;
     const preCommand = preCompact[0]?.hooks?.[0]?.command;
     const postCommand = postCompact[0]?.hooks?.[0]?.command;
-    assert.match(String(preCommand), /codex-native-hook\.js/);
-    assert.match(String(postCommand), /codex-native-hook\.js/);
+    
+    // Windows uses PowerShell shim, other platforms use direct Node.js
+    if (process.platform === "win32") {
+      assert.match(String(preCommand), /omx-native-hook-windows-shim\.ps1/);
+      assert.match(String(postCommand), /omx-native-hook-windows-shim\.ps1/);
+    } else {
+      assert.match(String(preCommand), /codex-native-hook\.js/);
+      assert.match(String(postCommand), /codex-native-hook\.js/);
+    }
+    
     assert.equal(postCommand, preCommand);
     assert.doesNotMatch(String(postCommand), /PostCompact Nudge|additionalContext|printf/);
   });

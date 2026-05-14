@@ -3174,16 +3174,23 @@ export async function dispatchCodexNativeHook(
     // unless Codex defines a supported PreCompact output contract.
     buildWikiPreCompactContext({ cwd });
   } else if ((hookEventName === "SessionStart" && !skipCanonicalSessionStartContext) || hookEventName === "UserPromptSubmit") {
-    const additionalContext = hookEventName === "SessionStart"
-      ? await buildSessionStartContext(cwd, canonicalSessionId || nativeSessionId, {
-        hookEventName,
-        payload,
-        canonicalSessionId,
-        nativeSessionId: resolvedNativeSessionId || nativeSessionId,
-      })
-      : isSubagentPromptSubmit
-        ? null
-        : (buildAdditionalContextMessage(readPromptText(payload), skillState, cwd, payload) ?? goalWorkflowAdditionalContext ?? triageAdditionalContext);
+    let additionalContext: string | null = null;
+    try {
+      additionalContext = hookEventName === "SessionStart"
+        ? await buildSessionStartContext(cwd, canonicalSessionId || nativeSessionId, {
+          hookEventName,
+          payload,
+          canonicalSessionId,
+          nativeSessionId: resolvedNativeSessionId || nativeSessionId,
+        })
+        : isSubagentPromptSubmit
+          ? null
+          : (buildAdditionalContextMessage(readPromptText(payload), skillState, cwd, payload) ?? goalWorkflowAdditionalContext ?? triageAdditionalContext);
+    } catch (error) {
+      // 如果构建上下文失败，记录错误但不中断 Hook 执行
+      await logNativeHookCliError(cwd, `build_${hookEventName}_context_error`, error, payload);
+      additionalContext = null;
+    }
     if (additionalContext) {
       outputJson = {
         hookSpecificOutput: {
@@ -3251,7 +3258,15 @@ async function readStdinJson(): Promise<NativeHookCliReadResult> {
 }
 
 function writeNativeHookJsonStdout(output: Record<string, unknown>): void {
-  process.stdout.write(`${JSON.stringify(output)}\n`);
+  try {
+    const jsonStr = JSON.stringify(output);
+    // 确保输出是纯 JSON，不包含任何额外字符
+    process.stdout.write(`${jsonStr}\n`);
+  } catch (error) {
+    // 如果序列化失败，输出空对象而不是崩溃
+    process.stderr.write(`[omx-hook-serialize-error] ${error instanceof Error ? error.message : String(error)}\n`);
+    process.stdout.write('{}\n');
+  }
 }
 
 async function logNativeHookCliError(
