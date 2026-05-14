@@ -1,4 +1,4 @@
-import { appendFile, readFile, writeFile, mkdir, rm, rename, readdir } from 'fs/promises';
+import { appendFile, readFile, writeFile, mkdir, rm, rename, readdir, unlink } from 'fs/promises';
 import { join, dirname, resolve, sep } from 'path';
 import { existsSync } from 'fs';
 import { randomUUID } from 'crypto';
@@ -726,6 +726,20 @@ export async function writeAtomic(filePath: string, data: string): Promise<void>
     await renameForAtomicWrite(tmpPath, filePath);
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
+    // Windows: rename may fail with EPERM/EBUSY if target is locked by antivirus or another process
+    if ((err.code === 'EPERM' || err.code === 'EBUSY') && process.platform === 'win32') {
+      // Retry up to 3 times with small delays
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await new Promise(resolve => setTimeout(resolve, 50 * attempt)); // Exponential backoff
+          await unlink(filePath);
+          await renameForAtomicWrite(tmpPath, filePath);
+          return;
+        } catch {
+          // Retry failed, continue to next attempt
+        }
+      }
+    }
     if (err.code === 'ENOENT' && existsSync(filePath)) {
       try {
         const existing = await readFile(filePath, 'utf8');

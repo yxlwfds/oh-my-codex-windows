@@ -18,6 +18,7 @@ import {
   writeSync,
   unlinkSync,
   statSync,
+  renameSync,
   constants,
 } from 'fs';
 import { join, dirname } from 'path';
@@ -367,11 +368,37 @@ export function pruneStale(): void {
 function rewriteRegistryUnsafe(mappings: SessionMapping[]): void {
   ensureRegistryDir();
 
-  if (mappings.length === 0) {
-    writeFileSync(REGISTRY_PATH, '', { mode: SECURE_FILE_MODE });
-    return;
-  }
+  const content = mappings.length === 0
+    ? ''
+    : mappings.map(m => JSON.stringify(m)).join('\n') + '\n';
 
-  const content = mappings.map(m => JSON.stringify(m)).join('\n') + '\n';
-  writeFileSync(REGISTRY_PATH, content, { mode: SECURE_FILE_MODE });
+  // Atomic write: temp file + rename to prevent corruption on crash
+  const tmpPath = `${REGISTRY_PATH}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    writeFileSync(tmpPath, content, { mode: SECURE_FILE_MODE });
+    renameSync(tmpPath, REGISTRY_PATH);
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    // Windows: rename may fail with EPERM/EBUSY if target is locked
+    if ((err.code === 'EPERM' || err.code === 'EBUSY') && process.platform === 'win32') {
+      // Retry up to 3 times with small delays
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50 * attempt);
+          unlinkSync(REGISTRY_PATH);
+          renameSync(tmpPath, REGISTRY_PATH);
+          return;
+        } catch {
+          // Retry failed, continue to next attempt
+        }
+      }
+    }
+    // Cleanup temp file on failure
+    try {
+      unlinkSync(tmpPath);
+    } catch {
+      // Temp file may already be gone
+    }
+    throw error;
+  }
 }

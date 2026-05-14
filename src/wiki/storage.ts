@@ -32,7 +32,27 @@ function atomicWriteFileSync(path: string, content: string): void {
   mkdirSync(dirname(path), { recursive: true });
   const tmpPath = `${path}.${process.pid}.${Date.now()}.tmp`;
   writeFileSync(tmpPath, content, 'utf8');
-  renameSync(tmpPath, path);
+  try {
+    renameSync(tmpPath, path);
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    // Windows: rename may fail with EPERM/EBUSY if target is locked by antivirus or another process
+    if ((err.code === 'EPERM' || err.code === 'EBUSY') && process.platform === 'win32') {
+      // Retry up to 3 times with small delays
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          // Use synchronous sleep for sync function
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50 * attempt);
+          unlinkSync(path);
+          renameSync(tmpPath, path);
+          return;
+        } catch {
+          // Retry failed, continue to next attempt
+        }
+      }
+    }
+    throw error;
+  }
 }
 
 function lockPathFor(path: string): string {
@@ -286,12 +306,12 @@ function readAllCanonicalPages(root: string): WikiPage[] {
 
 export function readIndex(root: string): string | null {
   const indexPath = join(getReadableWikiDir(root), INDEX_FILE);
-  return existsSync(indexPath) ? readFileSync(indexPath, 'utf8') : null;
+  try { return readFileSync(indexPath, 'utf8'); } catch (e: any) { if (e.code === 'ENOENT') return null; throw e; }
 }
 
 export function readLog(root: string): string | null {
   const logPath = join(getReadableWikiDir(root), LOG_FILE);
-  return existsSync(logPath) ? readFileSync(logPath, 'utf8') : null;
+  try { return readFileSync(logPath, 'utf8'); } catch (e: any) { if (e.code === 'ENOENT') return null; throw e; }
 }
 
 export function writePageUnsafe(root: string, page: WikiPage, options: { allowReserved?: boolean } = {}): void {
@@ -349,7 +369,8 @@ export function updateIndexUnsafe(root: string): void {
 export function appendLogUnsafe(root: string, entry: WikiLogEntry): void {
   const wikiDir = ensureWikiDir(root);
   const logPath = join(wikiDir, LOG_FILE);
-  const existing = existsSync(logPath) ? readFileSync(logPath, 'utf8') : '# Wiki Log\n\n';
+  let existing = '# Wiki Log\n\n';
+  try { existing = readFileSync(logPath, 'utf8'); } catch (e: any) { if (e.code !== 'ENOENT') throw e; }
   const logLine = `## [${entry.timestamp}] ${entry.operation}\n`
     + `- **Pages:** ${entry.pagesAffected.join(', ') || 'none'}\n`
     + `- **Summary:** ${entry.summary}\n\n`;

@@ -43,32 +43,30 @@ async function bootstrap(): Promise<DaemonRuntime> {
   }
 
   const lockfile = lockfilePath();
-  if (existsSync(lockfile)) {
-    let owner: { pid?: number } = {};
+  let owner: { pid?: number } = {};
+  try {
+    owner = JSON.parse(readFileSync(lockfile, "utf-8")) as { pid?: number };
+  } catch {
+    /* corrupt or ENOENT: treat as stale */
+  }
+  if (typeof owner.pid === "number" && owner.pid > 0) {
     try {
-      owner = JSON.parse(readFileSync(lockfile, "utf-8")) as { pid?: number };
+      process.kill(owner.pid, 0);
+      // Live daemon already running — refuse to start a duplicate.
+      process.stderr.write(
+        `omx-winmux: another daemon is already running (pid=${owner.pid}, lockfile=${lockfile}). Exiting.\n`,
+      );
+      process.exit(0);
     } catch {
-      /* corrupt: treat as stale */
-    }
-    if (typeof owner.pid === "number" && owner.pid > 0) {
-      try {
-        process.kill(owner.pid, 0);
-        // Live daemon already running — refuse to start a duplicate.
-        process.stderr.write(
-          `omx-winmux: another daemon is already running (pid=${owner.pid}, lockfile=${lockfile}). Exiting.\n`,
-        );
-        process.exit(0);
-      } catch {
-        // Stale lockfile from a dead process — remove and continue.
-        try {
-          unlinkSync(lockfile);
-        } catch { /* ignore */ }
-      }
-    } else {
+      // Stale lockfile from a dead process — remove and continue.
       try {
         unlinkSync(lockfile);
       } catch { /* ignore */ }
     }
+  } else {
+    try {
+      unlinkSync(lockfile);
+    } catch { /* ignore */ }
   }
 
   let job: JobObject | null = null;
@@ -123,10 +121,10 @@ async function bootstrap(): Promise<DaemonRuntime> {
     writeFileSync(
       lockfile,
       JSON.stringify({ pid: process.pid, startedAt: Date.now(), pipe: pipeName() }),
-      { encoding: "utf-8" },
+      { encoding: "utf-8", flag: "wx" },
     );
   } catch (err) {
-    process.stderr.write(`omx-winmux: failed to write lockfile ${lockfile}: ${(err as Error).message}\n`);
+    process.stderr.write(`omx-winmux: failed to write lockfile (race condition lost?) ${lockfile}: ${(err as Error).message}\n`);
     job.dispose();
     process.exit(1);
   }

@@ -102,6 +102,21 @@ async function writeJsonObjectAtomically(path: string, value: unknown): Promise<
     await writeFile(tempPath, JSON.stringify(value, null, 2));
     await rename(tempPath, path);
   } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    // Windows: rename may fail with EPERM/EBUSY if target is locked by antivirus or another process
+    if ((err.code === 'EPERM' || err.code === 'EBUSY') && process.platform === 'win32') {
+      // Retry up to 3 times with small delays
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await new Promise(resolve => setTimeout(resolve, 50 * attempt));
+          await rm(path, { force: true });
+          await rename(tempPath, path);
+          return;
+        } catch {
+          // Retry failed, continue to next attempt
+        }
+      }
+    }
     await rm(tempPath, { force: true }).catch(() => {});
     throw error;
   }

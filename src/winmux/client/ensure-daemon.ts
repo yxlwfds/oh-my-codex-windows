@@ -55,7 +55,6 @@ async function ping(
 
 function readLockfilePid(env: NodeJS.ProcessEnv): number | null {
   const path = lockfilePath(env);
-  if (!existsSync(path)) return null;
   try {
     const raw = readFileSync(path, "utf-8").trim();
     const parsed = JSON.parse(raw) as { pid?: number };

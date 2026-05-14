@@ -165,9 +165,8 @@ async function ensureGitInfoExcludePattern(
     "info/exclude",
   ]);
   if (!excludePath) return;
-  const existing = existsSync(excludePath)
-    ? await readFile(excludePath, "utf-8")
-    : "";
+  let existing = "";
+  try { existing = await readFile(excludePath, "utf-8"); } catch (e: any) { if (e.code !== 'ENOENT') throw e; }
   const lines = new Set(existing.split(/\r?\n/).filter(Boolean));
   if (lines.has(pattern)) return;
   const next = `${existing}${existing.endsWith("\n") || existing.length === 0 ? "" : "\n"}${pattern}\n`;
@@ -180,10 +179,9 @@ export async function writeWorkerWorktreeRootAgentsFile(
 ): Promise<string> {
   const agentsPath = join(options.worktreePath, "AGENTS.md");
   const tracked = isTracked(options.worktreePath, "AGENTS.md");
-  const existed = existsSync(agentsPath);
-  const previousContent = existed
-    ? await readFile(agentsPath, "utf-8")
-    : undefined;
+  let existed = false;
+  let previousContent;
+  try { previousContent = await readFile(agentsPath, "utf-8"); existed = true; } catch (e: any) { if (e.code !== 'ENOENT') throw e; }
   let skipWorktreeApplied = false;
 
   if (tracked) {

@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { existsSync, readFileSync } from "fs";
-import { appendFile, mkdir, readFile, rename, rm, stat, writeFile } from "fs/promises";
+import { appendFile, mkdir, readFile, rename, rm, stat, writeFile, unlink } from "fs/promises";
 import { dirname, join } from "path";
 import { isSessionStateUsable, readUsableSessionState } from "../hooks/session.js";
 
@@ -172,7 +172,26 @@ async function writeQueue(path: string, queue: ExecFollowupQueue): Promise<void>
   await mkdir(dirname(path), { recursive: true });
   const tempPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
   await writeFile(tempPath, JSON.stringify(queue, null, 2) + "\n");
-  await rename(tempPath, path);
+  try {
+    await rename(tempPath, path);
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    // Windows: rename may fail with EPERM/EBUSY if target is locked by antivirus or another process
+    if ((err.code === 'EPERM' || err.code === 'EBUSY') && process.platform === 'win32') {
+      // Retry up to 3 times with small delays
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await new Promise(resolve => setTimeout(resolve, 50 * attempt));
+          await unlink(path);
+          await rename(tempPath, path);
+          return;
+        } catch {
+          // Retry failed, continue to next attempt
+        }
+      }
+    }
+    throw error;
+  }
 }
 
 async function withQueueLock<T>(queuePath: string, operation: () => Promise<T>): Promise<T> {

@@ -40,7 +40,9 @@ import {
   resolveCodexConfigPathForLaunch,
   resolveCodexHomeForLaunch,
   resolveProjectLocalCodexHomeForLaunch,
+  shouldAutoIsolateLaunch,
   shouldAutoIsolateMadmaxLaunch,
+  createIsolatedRoot,
   createMadmaxIsolatedRoot,
   resolveOmxRootForLaunch,
   resolveDisposableWorktreeOmxRootForLaunch,
@@ -102,43 +104,149 @@ afterEach(() => {
   mock.restoreAll();
 });
 
-describe("madmax state isolation", () => {
-  it("auto-isolates only madmax launch and exec invocations", () => {
-    assert.equal(shouldAutoIsolateMadmaxLaunch("launch", ["--madmax"], {}), true);
-    assert.equal(shouldAutoIsolateMadmaxLaunch("exec", ["--madmax-spark"], {}), true);
-    assert.equal(shouldAutoIsolateMadmaxLaunch("team", ["--madmax"], {}), false);
-    assert.equal(shouldAutoIsolateMadmaxLaunch("launch", ["--yolo"], {}), false);
-    assert.equal(
-      shouldAutoIsolateMadmaxLaunch("launch", ["--madmax"], { OMX_ROOT: "/already/boxed" }),
-      false,
-    );
-    assert.equal(
-      shouldAutoIsolateMadmaxLaunch("launch", ["--madmax"], { OMXBOX_ACTIVE: "1" }),
-      false,
-    );
-    assert.equal(
-      shouldAutoIsolateMadmaxLaunch("launch", ["--madmax"], { OMX_NO_BOX: "1" }),
-      false,
-    );
+describe("state isolation", () => {
+  describe("shouldAutoIsolateLaunch (default isolation)", () => {
+    it("isolates launch and exec by default", () => {
+      assert.equal(shouldAutoIsolateLaunch("launch", [], {}), true);
+      assert.equal(shouldAutoIsolateLaunch("exec", [], {}), true);
+    });
+
+    it("isolates launch and exec regardless of flags", () => {
+      assert.equal(shouldAutoIsolateLaunch("launch", ["--yolo"], {}), true);
+      assert.equal(shouldAutoIsolateLaunch("exec", ["--model", "gpt-5"], {}), true);
+    });
+
+    it("does not isolate non-launch/exec commands", () => {
+      assert.equal(shouldAutoIsolateLaunch("team", [], {}), false);
+      assert.equal(shouldAutoIsolateLaunch("setup", [], {}), false);
+      assert.equal(shouldAutoIsolateLaunch("ralph", [], {}), false);
+    });
+
+    it("does not double-isolate already boxed sessions", () => {
+      assert.equal(
+        shouldAutoIsolateLaunch("launch", [], { OMXBOX_ACTIVE: "1" }),
+        false,
+      );
+    });
+
+    it("respects OMX_NO_ISOLATE opt-out", () => {
+      assert.equal(
+        shouldAutoIsolateLaunch("launch", [], { OMX_NO_ISOLATE: "1" }),
+        false,
+      );
+    });
+
+    it("respects OMX_NO_BOX opt-out (legacy)", () => {
+      assert.equal(
+        shouldAutoIsolateLaunch("launch", [], { OMX_NO_BOX: "1" }),
+        false,
+      );
+    });
+
+    it("respects explicit OMX_ROOT", () => {
+      assert.equal(
+        shouldAutoIsolateLaunch("launch", [], { OMX_ROOT: "/custom/path" }),
+        false,
+      );
+    });
+
+    it("respects explicit OMX_STATE_ROOT", () => {
+      assert.equal(
+        shouldAutoIsolateLaunch("launch", [], { OMX_STATE_ROOT: "/state/path" }),
+        false,
+      );
+    });
   });
 
-  it("creates a per-run OMX_ROOT registry entry without touching source .omx", async () => {
-    const wd = await mkdtemp(join(tmpdir(), "omx-madmax-source-"));
-    const runs = await mkdtemp(join(tmpdir(), "omx-madmax-runs-"));
-    try {
-      const runDir = createMadmaxIsolatedRoot(wd, ["--madmax"], { OMX_RUNS_DIR: runs });
-      assert.equal(runDir.startsWith(runs), true);
-      assert.equal(existsSync(join(wd, ".omx")), false);
-      const metadata = JSON.parse(await readFile(join(runDir, ".omxbox-run.json"), "utf-8"));
-      assert.equal(metadata.source_cwd, wd);
-      assert.equal(metadata.cwd, runDir);
-      assert.deepEqual(metadata.argv, ["--madmax"]);
-      const registry = await readFile(join(runs, "registry.jsonl"), "utf-8");
-      assert.match(registry, /"launcher":"owx --madmax"/);
-    } finally {
-      await rm(wd, { recursive: true, force: true });
-      await rm(runs, { recursive: true, force: true });
-    }
+  describe("shouldAutoIsolateMadmaxLaunch (backward compat)", () => {
+    it("delegates to shouldAutoIsolateLaunch", () => {
+      // Legacy function now delegates; verify it behaves identically
+      assert.equal(shouldAutoIsolateMadmaxLaunch("launch", [], {}), true);
+      assert.equal(shouldAutoIsolateMadmaxLaunch("setup", [], {}), false);
+    });
+  });
+
+  describe("createIsolatedRoot", () => {
+    it("creates a per-run OMX_ROOT with registry entry", async () => {
+      const wd = await mkdtemp(join(tmpdir(), "omx-isolated-source-"));
+      const runs = await mkdtemp(join(tmpdir(), "omx-isolated-runs-"));
+      try {
+        const runDir = createIsolatedRoot(wd, ["launch"], { OMX_RUNS_DIR: runs });
+        assert.equal(runDir.startsWith(runs), true);
+        assert.equal(existsSync(join(wd, ".omx")), false);
+        // Should have created isolated .omx
+        assert.equal(existsSync(join(runDir, ".omx")), true);
+        const metadata = JSON.parse(await readFile(join(runDir, ".omxbox-run.json"), "utf-8"));
+        assert.equal(metadata.source_cwd, wd);
+        assert.equal(metadata.cwd, runDir);
+        assert.deepEqual(metadata.argv, ["launch"]);
+        assert.equal(metadata.launcher, "owx");
+        const registry = await readFile(join(runs, "registry.jsonl"), "utf-8");
+        assert.match(registry, /"launcher":"owx"/);
+      } finally {
+        await rm(wd, { recursive: true, force: true });
+        await rm(runs, { recursive: true, force: true });
+      }
+    });
+
+    it("symlinks project-level shared resources from source .omx", async () => {
+      const wd = await mkdtemp(join(tmpdir(), "omx-isolated-link-"));
+      const runs = await mkdtemp(join(tmpdir(), "omx-isolated-link-runs-"));
+      try {
+        // Create source .omx with project resources
+        const sourceOmxDir = join(wd, ".omx");
+        await mkdir(sourceOmxDir, { recursive: true });
+        await writeFile(join(sourceOmxDir, "setup-scope.json"), JSON.stringify({ scope: "project" }));
+        await writeFile(join(sourceOmxDir, "project-memory.json"), JSON.stringify({ memories: [] }));
+        await writeFile(join(sourceOmxDir, "notepad.md"), "# Notes");
+
+        const runDir = createIsolatedRoot(wd, ["launch"], { OMX_RUNS_DIR: runs });
+        const isolatedOmxDir = join(runDir, ".omx");
+
+        // Project resources should be available in isolated .omx
+        assert.equal(existsSync(join(isolatedOmxDir, "setup-scope.json")), true);
+        assert.equal(existsSync(join(isolatedOmxDir, "project-memory.json")), true);
+        assert.equal(existsSync(join(isolatedOmxDir, "notepad.md")), true);
+
+        // Content should match (via symlink or copy)
+        const scopeData = JSON.parse(await readFile(join(isolatedOmxDir, "setup-scope.json"), "utf-8"));
+        assert.equal(scopeData.scope, "project");
+      } finally {
+        await rm(wd, { recursive: true, force: true });
+        await rm(runs, { recursive: true, force: true });
+      }
+    });
+
+    it("does not fail when source .omx has no shared resources", async () => {
+      const wd = await mkdtemp(join(tmpdir(), "omx-isolated-empty-"));
+      const runs = await mkdtemp(join(tmpdir(), "omx-isolated-empty-runs-"));
+      try {
+        // No source .omx directory at all
+        const runDir = createIsolatedRoot(wd, ["launch"], { OMX_RUNS_DIR: runs });
+        // Should still create the isolated .omx directory
+        assert.equal(existsSync(join(runDir, ".omx")), true);
+      } finally {
+        await rm(wd, { recursive: true, force: true });
+        await rm(runs, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe("createMadmaxIsolatedRoot (backward compat)", () => {
+    it("delegates to createIsolatedRoot", async () => {
+      const wd = await mkdtemp(join(tmpdir(), "omx-madmax-compat-"));
+      const runs = await mkdtemp(join(tmpdir(), "omx-madmax-compat-runs-"));
+      try {
+        const runDir = createMadmaxIsolatedRoot(wd, ["--madmax"], { OMX_RUNS_DIR: runs });
+        assert.equal(existsSync(join(runDir, ".omx")), true);
+        const metadata = JSON.parse(await readFile(join(runDir, ".omxbox-run.json"), "utf-8"));
+        // Note: launcher is now "owx" (not "owx --madmax") since delegation
+        assert.equal(metadata.source_cwd, wd);
+      } finally {
+        await rm(wd, { recursive: true, force: true });
+        await rm(runs, { recursive: true, force: true });
+      }
+    });
   });
 });
 

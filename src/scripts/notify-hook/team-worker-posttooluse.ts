@@ -12,7 +12,7 @@ const execFileAsync = promisify(execFile);
 // Lock management for concurrent PostToolUse hooks
 const LOCK_RETRY_MS = 25;
 const LOCK_TIMEOUT_MS = 5000;
-const LOCK_STALE_MS = 10000;
+const LOCK_STALE_MS = 20000; // Extended from 10s to 20s for Windows stability
 
 function lockOwnerToken(): string {
   return `${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}`;

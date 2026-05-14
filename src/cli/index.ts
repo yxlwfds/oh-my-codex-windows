@@ -5,7 +5,7 @@
 
 import { execFileSync, spawn } from "child_process";
 import { basename, dirname, join, posix, win32 } from "path";
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "fs";
 import { copyFile, cp, lstat, mkdir, readFile, readdir, rm, symlink, writeFile } from "fs/promises";
 import { constants as osConstants, homedir } from "os";
 import {
@@ -1168,22 +1168,39 @@ function applyDisposableWorktreeOmxRootForLaunch(
   env.OMX_ROOT = omxRootOverride;
 }
 
-export function shouldAutoIsolateMadmaxLaunch(
+export function shouldAutoIsolateLaunch(
   command: string,
   launchArgs: string[],
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
   if (command !== "launch" && command !== "exec") return false;
-  if (env.OMX_NO_BOX === "1" || env.OMXBOX_ACTIVE === "1") return false;
+  // Already inside an isolated box — don't double-box
+  if (env.OMXBOX_ACTIVE === "1") return false;
+  // User explicitly opted out of isolation
+  if (env.OMX_NO_ISOLATE === "1" || env.OMX_NO_BOX === "1") return false;
+  // If user set an explicit OMX_ROOT/OMX_STATE_ROOT, trust their choice
   if (env.OMX_ROOT || env.OMX_STATE_ROOT) return false;
-  return launchArgs.some((arg) => arg === MADMAX_FLAG || arg === MADMAX_SPARK_FLAG);
+  // Default: isolate all launch/exec sessions for multi-process safety
+  return true;
+}
+
+/**
+ * @deprecated Use shouldAutoIsolateLaunch instead.
+ * Kept for backward compatibility. Now delegates to shouldAutoIsolateLaunch.
+ */
+export function shouldAutoIsolateMadmaxLaunch(
+  command: string,
+  launchArgs: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return shouldAutoIsolateLaunch(command, launchArgs, env);
 }
 
 function sanitizeRunIdSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
 }
 
-export function createMadmaxIsolatedRoot(
+export function createIsolatedRoot(
   sourceCwd: string,
   argv: string[],
   env: NodeJS.ProcessEnv = process.env,
@@ -1195,8 +1212,16 @@ export function createMadmaxIsolatedRoot(
   const runDir = join(runsRoot, sanitizeRunIdSegment(`run-${stamp}-${suffix}`));
   mkdirSync(runDir, { recursive: false });
 
+  // Create .omx directory in the isolated root
+  const isolatedOmxDir = join(runDir, ".omx");
+  mkdirSync(isolatedOmxDir, { recursive: true });
+
+  // Symlink/copy project-level shared resources from source .omx
+  const sourceOmxDir = join(sourceCwd, ".omx");
+  linkProjectResources(sourceOmxDir, isolatedOmxDir);
+
   const metadata = {
-    launcher: "owx --madmax",
+    launcher: "owx",
     created_at: new Date().toISOString(),
     cwd: runDir,
     source_cwd: sourceCwd,
@@ -1207,18 +1232,89 @@ export function createMadmaxIsolatedRoot(
   return runDir;
 }
 
+/**
+ * @deprecated Use createIsolatedRoot instead.
+ * Kept for backward compatibility.
+ */
+export function createMadmaxIsolatedRoot(
+  sourceCwd: string,
+  argv: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return createIsolatedRoot(sourceCwd, argv, env);
+}
+
+/**
+ * Link or copy project-level shared resources from source .omx to isolated .omx.
+ * These resources should be shared across concurrent sessions:
+ * - setup-scope.json (setup configuration)
+ * - hud-config.json (HUD layout configuration)
+ * - project-memory.json (project memory / context)
+ * - notepad.md (project notepad)
+ * - plans/ (project plans directory)
+ */
+function linkProjectResources(sourceOmxDir: string, isolatedOmxDir: string): void {
+  const sharedFiles = [
+    "setup-scope.json",
+    "hud-config.json",
+    "project-memory.json",
+    "notepad.md",
+  ];
+
+  for (const file of sharedFiles) {
+    const sourcePath = join(sourceOmxDir, file);
+    const targetPath = join(isolatedOmxDir, file);
+
+    if (!existsSync(sourcePath)) continue;
+
+    try {
+      // Try symlink first (POSIX), fall back to copy (Windows without admin)
+      symlinkSync(sourcePath, targetPath, "file");
+    } catch {
+      try {
+        copyFileSync(sourcePath, targetPath);
+      } catch {
+        // Non-critical: best effort only
+      }
+    }
+  }
+
+  // Symlink plans directory if it exists
+  const sourcePlansDir = join(sourceOmxDir, "plans");
+  const targetPlansDir = join(isolatedOmxDir, "plans");
+  if (existsSync(sourcePlansDir)) {
+    try {
+      symlinkSync(sourcePlansDir, targetPlansDir, "dir");
+    } catch {
+      // Non-critical: plans can be session-specific
+    }
+  }
+}
+
+function activateIsolationIfNeeded(
+  command: string,
+  launchArgs: string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  if (!shouldAutoIsolateLaunch(command, launchArgs, env)) return;
+  const runDir = createIsolatedRoot(cwd, launchArgs, env);
+  env.OMX_ROOT = runDir;
+  env.OMXBOX_ACTIVE = "1";
+  env.OMX_SOURCE_CWD = cwd;
+  process.stderr.write(`[omx] isolated session state: ${runDir} (source: ${cwd})\n`);
+}
+
+/**
+ * @deprecated Use activateIsolationIfNeeded instead.
+ */
 function activateMadmaxIsolationIfNeeded(
   command: string,
   launchArgs: string[],
   cwd: string,
   env: NodeJS.ProcessEnv = process.env,
 ): void {
-  if (!shouldAutoIsolateMadmaxLaunch(command, launchArgs, env)) return;
-  const runDir = createMadmaxIsolatedRoot(cwd, launchArgs, env);
-  env.OMX_ROOT = runDir;
-  env.OMXBOX_ACTIVE = "1";
-  env.OMX_SOURCE_CWD = cwd;
-  process.stderr.write(`[omx] madmax isolated state: ${runDir} (source: ${cwd})\n`);
+  activateIsolationIfNeeded(command, launchArgs, cwd, env);
 }
 
 export async function main(args: string[]): Promise<void> {
@@ -1276,7 +1372,7 @@ export async function main(args: string[]): Promise<void> {
     return;
   }
 
-  activateMadmaxIsolationIfNeeded(command, launchArgs, process.cwd(), process.env);
+  activateIsolationIfNeeded(command, launchArgs, process.cwd(), process.env);
 
   try {
     switch (command) {
@@ -3864,7 +3960,7 @@ async function postLaunch(
 
   // 0. Stop notify fallback watcher first.
   try {
-    await stopNotifyFallbackWatcher(cwd);
+    await stopNotifyFallbackWatcher(cwd, sessionId);
   } catch (err) {
     logCliOperationFailure(err);
     // Non-fatal
@@ -4035,8 +4131,9 @@ async function emitNativeHookEvent(
   });
 }
 
-function notifyFallbackPidPath(cwd: string): string {
-  return join(omxRoot(cwd), "state", "notify-fallback.pid");
+function notifyFallbackPidPath(cwd: string, sessionId?: string): string {
+  const baseName = sessionId ? `notify-fallback.${sessionId}.pid` : 'notify-fallback.pid';
+  return join(omxRoot(cwd), "state", baseName);
 }
 
 function hookDerivedWatcherPidPath(cwd: string): string {
@@ -4265,7 +4362,7 @@ async function startNotifyFallbackWatcher(
   options: { codexHomeOverride?: string; enableAuthority?: boolean; sessionId?: string } = {},
 ): Promise<void> {
   const { mkdir, writeFile } = await import("fs/promises");
-  const pidPath = notifyFallbackPidPath(cwd);
+  const pidPath = notifyFallbackPidPath(cwd, options.sessionId);
   await reapStaleNotifyFallbackWatcher(pidPath);
 
   if (!shouldEnableNotifyFallbackWatcher(process.env, process.platform)) return;
@@ -4415,9 +4512,9 @@ async function startHookDerivedWatcher(cwd: string): Promise<void> {
   });
 }
 
-async function stopNotifyFallbackWatcher(cwd: string): Promise<void> {
+async function stopNotifyFallbackWatcher(cwd: string, sessionId?: string): Promise<void> {
   const { readFile, unlink } = await import("fs/promises");
-  const pidPath = notifyFallbackPidPath(cwd);
+  const pidPath = notifyFallbackPidPath(cwd, sessionId);
   if (!existsSync(pidPath)) return;
 
   try {

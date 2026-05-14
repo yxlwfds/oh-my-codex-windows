@@ -24,8 +24,8 @@ function loadWikiConfig(root: string): WikiConfig {
 
   for (const path of candidates) {
     try {
-      if (!existsSync(path)) continue;
-      const parsed = JSON.parse(readFileSync(path, 'utf8')) as { wiki?: Partial<WikiConfig> };
+      let raw = ''; try { raw = readFileSync(path, 'utf8'); } catch (e: any) { if (e.code === 'ENOENT') continue; throw e; }
+      const parsed = JSON.parse(raw) as { wiki?: Partial<WikiConfig> };
       if (parsed?.wiki && typeof parsed.wiki === 'object') {
         return { ...DEFAULT_WIKI_CONFIG, ...parsed.wiki };
       }
@@ -188,9 +188,14 @@ export function onPostCompact(data: { cwd?: string }): { additionalContext?: str
 function feedProjectMemory(root: string): void {
   try {
     const projectMemoryPath = resolveProjectMemoryPath(root);
-    if (!projectMemoryPath || !existsSync(projectMemoryPath)) return;
-
-    const parsed = JSON.parse(readFileSync(projectMemoryPath, 'utf8')) as Record<string, unknown>;
+    if (!projectMemoryPath) return;
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(readFileSync(projectMemoryPath, 'utf8')) as Record<string, unknown>;
+    } catch (e: any) {
+      if (e.code === 'ENOENT') return;
+      throw e;
+    }
     const existing = readPage(root, 'environment.md');
     const memoryMtime = statSync(projectMemoryPath).mtimeMs;
     const existingUpdated = existing ? new Date(existing.frontmatter.updated).getTime() : 0;

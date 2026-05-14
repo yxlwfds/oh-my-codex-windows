@@ -98,12 +98,10 @@ export async function winmuxCli(args: string[]): Promise<number> {
       const pipe = pipeName();
       const lock = lockfilePath();
       let lockInfo: { pid?: number; pipe?: string; startedAt?: number } | null = null;
-      if (existsSync(lock)) {
-        try {
-          lockInfo = JSON.parse(readFileSync(lock, "utf-8"));
-        } catch {
-          lockInfo = null;
-        }
+      try {
+        lockInfo = JSON.parse(readFileSync(lock, "utf-8"));
+      } catch {
+        lockInfo = null;
       }
       let live: { pid: number; version: number; startedAt: number } | null = null;
       const ping = await sendRequest<{ pid: number; version: number; startedAt: number }>({
