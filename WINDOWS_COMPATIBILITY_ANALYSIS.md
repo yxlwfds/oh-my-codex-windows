@@ -1182,14 +1182,14 @@ Lease 持有者使用 PID+timestamp 追踪，支持死进程回收。
 5. 添加文件已存在时的并发覆盖写入测试
    - ✅ 已完成: `windows-concurrency.test.ts`
 
-6. 关键路径添加 TOCTOU 防护（try-catch 代替 existsSync 检查）
+6. ✅ 已完成: 关键路径添加 TOCTOU 防护（try-catch 代替 existsSync 检查，如 src/wiki/storage.ts, src/team/worker-bootstrap.ts, src/winmux 等）
 
 ### 🟢 中优先级（待修复）
 
 7. 添加 Windows 并发压力测试
    - ✅ 已完成: 100次并发写入测试
 
-8. 监控 daemon 启动的竞态窗口
+8. ✅ 已完成: 修复 daemon 启动的竞态窗口（使用 flag: \'wx\' 确保 lockfile 创建的原子性，防止多个 daemon 相互覆盖）
 
 ---
 
