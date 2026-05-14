@@ -6,7 +6,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { buildManagedCodexHooksConfig } from "../../config/codex-hooks.js";
+import {
+  buildManagedCodexHooksConfig,
+  buildManagedCodexNativeHookWindowsShimContent,
+} from "../../config/codex-hooks.js";
 import { DOCUMENT_REFRESH_EXEMPTION_PREFIX } from "../../document-refresh/enforcer.js";
 import {
   initTeamState,
@@ -246,10 +249,11 @@ describe("codex native hook config", () => {
       hooks?: Array<Record<string, unknown>>;
     };
     assert.equal(preToolUse.matcher, "Bash");
-    assert.match(
-      String(preToolUse.hooks?.[0]?.command || ""),
-      /codex-native-hook\.js"?$/,
-    );
+    if (process.platform === "win32") {
+      assert.match(String(preToolUse.hooks?.[0]?.command || ""), /omx-native-hook-windows-shim\.ps1/);
+    } else {
+      assert.match(String(preToolUse.hooks?.[0]?.command || ""), /codex-native-hook\.js"?$/);
+    }
     assert.equal(preToolUse.hooks?.[0]?.statusMessage, undefined);
 
     const postToolUse = config.hooks.PostToolUse[0] as {
@@ -257,10 +261,11 @@ describe("codex native hook config", () => {
       hooks?: Array<Record<string, unknown>>;
     };
     assert.equal(postToolUse.matcher, undefined);
-    assert.match(
-      String(postToolUse.hooks?.[0]?.command || ""),
-      /codex-native-hook\.js"?$/,
-    );
+    if (process.platform === "win32") {
+      assert.match(String(postToolUse.hooks?.[0]?.command || ""), /omx-native-hook-windows-shim\.ps1/);
+    } else {
+      assert.match(String(postToolUse.hooks?.[0]?.command || ""), /codex-native-hook\.js"?$/);
+    }
     assert.equal(postToolUse.hooks?.[0]?.statusMessage, undefined);
 
     const userPromptSubmit = config.hooks.UserPromptSubmit[0] as {
@@ -268,10 +273,11 @@ describe("codex native hook config", () => {
       hooks?: Array<Record<string, unknown>>;
     };
     assert.equal(userPromptSubmit.matcher, undefined);
-    assert.match(
-      String(userPromptSubmit.hooks?.[0]?.command || ""),
-      /codex-native-hook\.js"?$/,
-    );
+    if (process.platform === "win32") {
+      assert.match(String(userPromptSubmit.hooks?.[0]?.command || ""), /omx-native-hook-windows-shim\.ps1/);
+    } else {
+      assert.match(String(userPromptSubmit.hooks?.[0]?.command || ""), /codex-native-hook\.js"?$/);
+    }
     assert.equal(userPromptSubmit.hooks?.[0]?.statusMessage, undefined);
 
     const stop = config.hooks.Stop[0] as {
@@ -284,10 +290,11 @@ describe("codex native hook config", () => {
       hooks?: Array<Record<string, unknown>>;
     };
     assert.equal(postCompact.matcher, undefined);
-    assert.match(
-      String(postCompact.hooks?.[0]?.command || ""),
-      /codex-native-hook\.js"?$/,
-    );
+    if (process.platform === "win32") {
+      assert.match(String(postCompact.hooks?.[0]?.command || ""), /omx-native-hook-windows-shim\.ps1/);
+    } else {
+      assert.match(String(postCompact.hooks?.[0]?.command || ""), /codex-native-hook\.js"?$/);
+    }
     assert.doesNotMatch(
       String(postCompact.hooks?.[0]?.command || ""),
       /PostCompact Nudge|additionalContext|printf/,
@@ -349,6 +356,54 @@ describe("codex native hook dispatch", () => {
       const output = parseSingleJsonStdout(stdout);
 
       assert.deepEqual(output, {});
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps Stop CLI no-op output parseable when the native hook script is temporarily unavailable", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "omx-native-hook-cli-stop-missing-script-"));
+    try {
+      const shell = ["pwsh", "powershell.exe", "powershell"].find((candidate) => {
+        const probe = spawnSync(candidate, ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"], {
+          encoding: "utf-8",
+        });
+        return !probe.error && probe.status === 0;
+      });
+      if (!shell) return;
+
+      const pkgRoot = join(cwd, "pkg root");
+      const hookPath = join(pkgRoot, "dist", "scripts", "codex-native-hook.js");
+      const shimPath = join(cwd, "shim.ps1");
+      await writeFile(
+        shimPath,
+        buildManagedCodexNativeHookWindowsShimContent(pkgRoot, {
+          hookScriptPath: hookPath,
+          nodePath: process.execPath,
+        }),
+      );
+
+      const result = spawnSync(
+        shell,
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", shimPath],
+        {
+          input: JSON.stringify({
+            hook_event_name: "Stop",
+            cwd,
+            session_id: "sess-cli-stop-missing-script",
+            thread_id: "thread-cli-stop-missing-script",
+            turn_id: "turn-cli-stop-missing-script",
+          }),
+          encoding: "utf-8",
+          env: {
+            ...process.env,
+            OMX_NATIVE_HOOK_LAUNCH_TIMEOUT_MS: "250",
+          },
+        },
+      );
+
+      assert.equal(result.status, 0);
+      assert.deepEqual(parseSingleJsonStdout(String(result.stdout ?? "")), {});
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }

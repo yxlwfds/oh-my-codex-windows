@@ -142,7 +142,7 @@ describe('package bin contract', () => {
         `${target} initialize response should include serverInfo`,
       );
     }
-    assert.match(compiledCliSource, /owx update\s+Check npm now, update the global install immediately, then refresh setup/);
+    assert.match(compiledCliSource, /owx update\s+Manually check npm, update the global install immediately, then refresh setup/);
     assert.match(compiledCliSource, /case "update"/);
 
     rmSync(packagedSparkShellPath, { force: true });

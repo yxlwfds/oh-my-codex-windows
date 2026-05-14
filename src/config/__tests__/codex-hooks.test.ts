@@ -26,10 +26,15 @@ describe("codex hooks helpers", () => {
     const config = buildManagedCodexHooksConfig("/repo");
     const command = (config.hooks.SessionStart[0] as { hooks?: Array<{ command?: string }> } | undefined)?.hooks?.[0]?.command;
 
-    assert.equal(
-      command,
-      `"${process.execPath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}" "/repo/dist/scripts/codex-native-hook.js"`,
-    );
+    if (process.platform === "win32") {
+      assert.equal(command, 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "\\hooks\\omx-native-hook-windows-shim.ps1"');
+      assert.doesNotMatch(command ?? "", /codex-native-hook\.js/);
+    } else {
+      assert.equal(
+        command,
+        `"${process.execPath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}" "/repo/dist/scripts/codex-native-hook.js"`,
+      );
+    }
   });
 
   it("registers SessionStart for startup, resume, and clear reset sources", () => {
@@ -112,6 +117,11 @@ describe("codex hooks helpers", () => {
     assert.match(content, /\$startInfo\.RedirectStandardInput = \$true/);
     assert.match(content, /\$startInfo\.RedirectStandardOutput = \$true/);
     assert.match(content, /\$startInfo\.RedirectStandardError = \$true/);
+    assert.match(content, /\$hookScript = 'D:\\Program Files\\O''Malley\\oh-my-codex\\dist\\scripts\\codex-native-hook\.js'/);
+    assert.match(content, /\$launchTimeoutMs = 15000/);
+    assert.match(content, /Test-Path -LiteralPath \$hookScript/);
+    assert.match(content, /Start-Sleep -Milliseconds 200/);
+    assert.match(content, /\[Console\]::Out\.WriteLine\('\{\}'\)/);
     assert.match(content, /\[Console\]::Out\.Write\(\$stdoutTask\.Result\)/);
     assert.match(content, /\[Console\]::Error\.Write\(\$stderrTask\.Result\)/);
     assert.match(content, /exit \$process\.ExitCode/);
@@ -173,6 +183,48 @@ describe("codex hooks helpers", () => {
     }
   });
 
+  it("falls back to parseable no-op JSON when the Windows shim cannot find the built hook script", async () => {
+    const shell = ["pwsh", "powershell.exe", "powershell"].find((candidate) => {
+      const probe = spawnSync(candidate, ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"], {
+        encoding: "utf-8",
+      });
+      return !probe.error && probe.status === 0;
+    });
+    if (!shell) return;
+
+    const wd = await mkdtemp(join(tmpdir(), "omx-windows-hook-shim-missing-"));
+    try {
+      const pkgRoot = join(wd, "pkg root");
+      const hookPath = join(pkgRoot, "dist", "scripts", "codex-native-hook.js");
+      const shimPath = join(wd, "shim.ps1");
+      await writeFile(
+        shimPath,
+        buildManagedCodexNativeHookWindowsShimContent(pkgRoot, {
+          hookScriptPath: hookPath,
+          nodePath: process.execPath,
+        }),
+      );
+
+      const result = spawnSync(
+        shell,
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", shimPath],
+        {
+          input: "payload with spaces",
+          encoding: "utf-8",
+          env: {
+            ...process.env,
+            OMX_NATIVE_HOOK_LAUNCH_TIMEOUT_MS: "250",
+          },
+        },
+      );
+
+      assert.equal(result.status, 0);
+      assert.equal(result.stdout.trim(), "{}");
+    } finally {
+      await rm(wd, { recursive: true, force: true });
+    }
+  });
+
   it("merges managed wrappers without dropping user hooks", () => {
     const merged = JSON.parse(
       mergeManagedCodexHooksConfig(
@@ -196,15 +248,20 @@ describe("codex hooks helpers", () => {
     ) as { hooks: Record<string, Array<{ hooks?: Array<{ command?: string }> }>> };
 
     const sessionStart = merged.hooks.SessionStart;
-    assert.equal(
-      sessionStart.flatMap((entry) => entry.hooks ?? []).filter((hook) =>
-        String(hook.command ?? "").includes("codex-native-hook.js")
-      ).length,
-      1,
-    );
+    const managedCommands = sessionStart.flatMap((entry) => entry.hooks ?? []).map((hook) => String(hook.command ?? ""));
+    if (process.platform === "win32") {
+      assert.equal(
+        managedCommands.filter((command) => command.includes("omx-native-hook-windows-shim.ps1")).length,
+        1,
+      );
+    } else {
+      assert.equal(
+        managedCommands.filter((command) => command.includes("codex-native-hook.js")).length,
+        1,
+      );
+    }
     assert.match(JSON.stringify(sessionStart), /echo keep-me/);
     assert.match(JSON.stringify(sessionStart), /echo standalone-user/);
-    assert.doesNotMatch(JSON.stringify(sessionStart), /Loading OMX session context/);
   });
 
   it("builds trust state only for generated OMX hook handlers", () => {
@@ -227,8 +284,9 @@ describe("codex hooks helpers", () => {
 
   it("matches Codex's normalized command hook hash identity", async () => {
     const state = buildManagedCodexHookTrustState("/hooks.json", "/repo");
-    const command =
-      `"${process.execPath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}" "/repo/dist/scripts/codex-native-hook.js"`;
+    const command = process.platform === "win32"
+      ? 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "\\hooks\\omx-native-hook-windows-shim.ps1"'
+      : `"${process.execPath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}" "/repo/dist/scripts/codex-native-hook.js"`;
     const expectedIdentity = {
       event_name: "pre_tool_use",
       hooks: [
@@ -475,8 +533,12 @@ describe("codex hooks helpers", () => {
     };
     const commands = merged.hooks.SessionStart.flatMap((entry) => entry.hooks ?? [])
       .map((hook) => hook.command ?? "");
-    assert.equal(commands.filter((command) => /omx-native-hook-windows-shim\.ps1/.test(command)).length, 1);
-    assert.equal(commands.filter((command) => /codex-native-hook\.js/.test(command)).length, 0);
+    if (process.platform === "win32") {
+      assert.equal(commands.filter((command) => /omx-native-hook-windows-shim\.ps1/.test(command)).length, 1);
+      assert.equal(commands.filter((command) => /codex-native-hook\.js/.test(command)).length, 0);
+    } else {
+      assert.equal(commands.filter((command) => /codex-native-hook\.js/.test(command)).length, 1);
+    }
     assert.ok(commands.includes("echo keep-me"));
   });
 

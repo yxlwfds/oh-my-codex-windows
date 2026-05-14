@@ -1522,7 +1522,7 @@ describe("resolveCliInvocation", () => {
   });
 
   it("advertises the explicit update command in top-level help", () => {
-    assert.match(HELP, /owx update\s+Check npm now, update the global install immediately, then refresh setup/);
+    assert.match(HELP, /owx update\s+Manually check npm, update the global install immediately, then refresh setup/);
   });
 
   it("advertises concise launch policy controls in top-level help", () => {

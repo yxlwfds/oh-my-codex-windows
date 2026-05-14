@@ -1,9 +1,9 @@
 /**
  * Update orchestration for oh-my-codex.
  *
- * The launch-time checker is intentionally passive, non-fatal, and throttled.
- * The explicit `omx update` command uses the same executor but bypasses the
- * launch-time cadence so a user request always checks npm immediately.
+ * The explicit `omx update` command uses the update executor directly.
+ * Startup no longer invokes this path automatically; updates are now
+ * operator-driven through the manual command only.
  */
 
 import { readFile, writeFile, mkdir } from 'fs/promises';

@@ -87,7 +87,7 @@ import {
   type SkillActiveStateLike,
 } from "../state/skill-active.js";
 import { isTrackedWorkflowMode } from "../state/workflow-transition.js";
-import { maybeCheckAndPromptUpdate, runImmediateUpdate } from "./update.js";
+import { runImmediateUpdate } from "./update.js";
 import { maybePromptGithubStar } from "./star-prompt.js";
 import {
   generateOverlay,
@@ -191,7 +191,7 @@ Usage:
                 Queue a Stop-hook continuation for built-in image generation turns
   owx setup     Install skills, prompts, CLI-first config, and scope-specific AGENTS.md
                 (user scope prompts for legacy vs plugin skill delivery when needed)
-  owx update    Check npm now, update the global install immediately, then refresh setup
+  owx update    Manually check npm, update the global install immediately, then refresh setup
   owx uninstall Remove OMX configuration and clean up installed artifacts
   owx doctor    Check installation health
   owx list      List packaged OMX skills and native agent prompts (--json)
@@ -1600,13 +1600,6 @@ export async function launchWithHud(args: string[]): Promise<void> {
 
   const sessionId = `omx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   try {
-    await maybeCheckAndPromptUpdate(cwd);
-  } catch (err) {
-    logCliOperationFailure(err);
-    // Non-fatal: update checks must never block launch
-  }
-
-  try {
     await maybePromptGithubStar();
   } catch (err) {
     logCliOperationFailure(err);
@@ -1717,12 +1710,6 @@ export async function execWithOverlay(args: string[]): Promise<void> {
   applyDisposableWorktreeOmxRootForLaunch(ensuredLaunchWorktree);
 
   const sessionId = `omx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-  try {
-    await maybeCheckAndPromptUpdate(cwd);
-  } catch (err) {
-    logCliOperationFailure(err);
-  }
 
   try {
     await maybePromptGithubStar();
