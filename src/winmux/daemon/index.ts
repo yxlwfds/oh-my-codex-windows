@@ -16,7 +16,7 @@
  * and `process.exit(1)`. There is NO fallback to tmux on Windows.
  */
 
-import { existsSync, mkdirSync, openSync, unlinkSync, writeFileSync, closeSync, readFileSync } from "fs";
+import { mkdirSync, openSync, unlinkSync, writeFileSync, closeSync, readFileSync } from "fs";
 import { createRequire } from "module";
 import { dirname } from "path";
 import { lockfilePath, logFilePath, pipeName, stateDir } from "../ipc/pipe-paths.js";
@@ -38,9 +38,7 @@ interface DaemonRuntime {
 
 async function bootstrap(): Promise<DaemonRuntime> {
   const dir = stateDir();
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
+  mkdirSync(dir, { recursive: true });
 
   const lockfile = lockfilePath();
   let owner: { pid?: number } = {};
