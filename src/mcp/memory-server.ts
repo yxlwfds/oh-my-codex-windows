@@ -9,7 +9,8 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { readFile, writeFile, mkdir, rename } from 'fs/promises';
+import { readFile, writeFile, mkdir } from 'fs/promises';
+import { atomicWriteFile } from '../utils/atomic-write.js';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { parseNotepadPruneDaysOld } from './memory-validation.js';
@@ -296,9 +297,7 @@ export async function handleMemoryToolCall(request: {
         }
       }
       existing = replaceSection(existing, 'PRIORITY', content.slice(0, 500));
-      const tmpPath = notePath + '.tmp.' + process.pid;
-      await writeFile(tmpPath, existing);
-      await rename(tmpPath, notePath);
+      await atomicWriteFile(notePath, existing);
       return text({ success: true });
     }
 
@@ -317,9 +316,7 @@ export async function handleMemoryToolCall(request: {
         }
       }
       existing = appendToSection(existing, 'WORKING MEMORY', entry);
-      const tmpPath = notePath + '.tmp.' + process.pid;
-      await writeFile(tmpPath, existing);
-      await rename(tmpPath, notePath);
+      await atomicWriteFile(notePath, existing);
       return text({ success: true });
     }
 
@@ -338,9 +335,7 @@ export async function handleMemoryToolCall(request: {
         }
       }
       existing = appendToSection(existing, 'MANUAL', entry);
-      const tmpPath = notePath + '.tmp.' + process.pid;
-      await writeFile(tmpPath, existing);
-      await rename(tmpPath, notePath);
+      await atomicWriteFile(notePath, existing);
       return text({ success: true });
     }
 

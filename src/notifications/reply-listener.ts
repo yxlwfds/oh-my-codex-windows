@@ -292,7 +292,24 @@ export function isReplyListenerProcess(
       const cmdline = readFileSync(`/proc/${pid}/cmdline`, 'utf-8');
       return cmdline.includes(DAEMON_IDENTITY_MARKER);
     }
-    if (process.platform === 'win32') return false;
+    if (platform === 'win32') {
+      // Use PowerShell to inspect process command line on Windows
+      const { result } = spawnPlatformCommandSync(
+        'powershell.exe',
+        ['-NoProfile', '-Command', `Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" | Select-Object -ExpandProperty CommandLine`],
+        {
+          encoding: 'utf-8',
+          timeout: 3000,
+          windowsHide: true,
+        },
+        platform,
+        options.env,
+        options.existsImpl,
+        options.spawnImpl,
+      );
+      if (result.status !== 0 || result.error) return false;
+      return (result.stdout ?? '').includes(DAEMON_IDENTITY_MARKER);
+    }
     // macOS and other POSIX systems
     const { result } = spawnPlatformCommandSync(
       'ps',
@@ -905,6 +922,8 @@ async function pollLoop(): Promise<void> {
 
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
+  process.on('SIGHUP', shutdown);
+  process.on('SIGBREAK' as NodeJS.Signals, shutdown);
 
   try {
     pruneStale();

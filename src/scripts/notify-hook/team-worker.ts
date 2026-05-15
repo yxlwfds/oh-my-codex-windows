@@ -3,7 +3,8 @@
  * Team worker: heartbeat, idle detection, and leader notification.
  */
 
-import { readFile, writeFile, mkdir, appendFile, rename, stat, readdir } from 'fs/promises';
+import { readFile, writeFile, mkdir, appendFile, stat, readdir } from 'fs/promises';
+import { atomicWriteFile } from '../../utils/atomic-write.js';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { resolveWorkerNotifyTeamStateRootPath } from '../../team/state-root.js';
@@ -343,9 +344,7 @@ export async function updateWorkerHeartbeat(stateDir, teamName, workerName) {
     alive: true,
   };
   // Atomic write: tmp + rename
-  const tmpPath = heartbeatPath + '.tmp.' + process.pid;
-  await writeFile(tmpPath, JSON.stringify(heartbeat, null, 2));
-  await rename(tmpPath, heartbeatPath);
+  await atomicWriteFile(heartbeatPath, JSON.stringify(heartbeat, null, 2));
 }
 
 export async function maybeNotifyLeaderAllWorkersIdle({ cwd, stateDir, logsDir, parsedTeamWorker }) {
@@ -562,9 +561,7 @@ export async function maybeNotifyLeaderWorkerIdle({ cwd, stateDir, logsDir, pars
   // Always update prev state (atomic write)
   try {
     await mkdir(workerDir, { recursive: true });
-    const tmpPath = prevStatePath + '.tmp.' + process.pid;
-    await writeFile(tmpPath, JSON.stringify({ state: currentState, updated_at: nowIso }, null, 2));
-    await rename(tmpPath, prevStatePath);
+    await atomicWriteFile(prevStatePath, JSON.stringify({ state: currentState, updated_at: nowIso }, null, 2));
   } catch { /* best effort */ }
 
   // Fire when a worker leaves active work into an idle-ish terminal state.
@@ -611,8 +608,7 @@ export async function maybeNotifyLeaderWorkerIdle({ cwd, stateDir, logsDir, pars
   const paneGuard = await checkLeaderPaneReadyForWorkerStateReminder(tmuxTarget);
   if (!paneGuard.ok) {
     try {
-      const tmpPath = cooldownPath + '.tmp.' + process.pid;
-      await writeFile(tmpPath, JSON.stringify({
+      await atomicWriteFile(cooldownPath, JSON.stringify({
         last_notified_at_ms: nowMs,
         last_notified_at: nowIso,
         prev_state: prevState,
@@ -620,7 +616,6 @@ export async function maybeNotifyLeaderWorkerIdle({ cwd, stateDir, logsDir, pars
         delivery: 'deferred_shell',
         pane_current_command: paneGuard.paneCurrentCommand || null,
       }, null, 2));
-      await rename(tmpPath, cooldownPath);
     } catch { /* best effort */ }
     await emitLeaderPaneMissingDeferred({
       stateDir,
@@ -656,14 +651,12 @@ export async function maybeNotifyLeaderWorkerIdle({ cwd, stateDir, logsDir, pars
 
     // Update cooldown state
     try {
-      const tmpPath = cooldownPath + '.tmp.' + process.pid;
-      await writeFile(tmpPath, JSON.stringify({
+      await atomicWriteFile(cooldownPath, JSON.stringify({
         last_notified_at_ms: nowMs,
         last_notified_at: nowIso,
         prev_state: prevState,
         orchestration_intent: orchestrationIntent,
       }, null, 2));
-      await rename(tmpPath, cooldownPath);
     } catch { /* best effort */ }
 
     // Write event to events.ndjson

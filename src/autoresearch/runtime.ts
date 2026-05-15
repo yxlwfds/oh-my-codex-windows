@@ -475,10 +475,9 @@ export async function runAutoresearchEvaluator(
   const result = spawnSync(contract.sandbox.evaluator.command, {
     cwd: worktreePath,
     encoding: 'utf-8',
-    shell: true,
     maxBuffer: 1024 * 1024,
-      windowsHide: true,
-    });
+    windowsHide: true,
+  });
   const stdout = result.stdout?.trim() || '';
   const stderr = result.stderr?.trim() || '';
 

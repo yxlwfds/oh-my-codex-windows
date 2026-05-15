@@ -116,6 +116,7 @@ function branchExists(repoRoot: string, branchName: string): boolean {
   const result = spawnSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branchName}`], {
     cwd: repoRoot,
     encoding: 'utf-8',
+    windowsHide: true,
   });
   return result.status === 0;
 }

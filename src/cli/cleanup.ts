@@ -420,7 +420,22 @@ export async function cleanupOmxMcpProcesses(
   const listProcessesImpl = dependencies.listProcesses ?? listOmxProcesses;
   const selectCandidates = dependencies.selectCandidates ?? findCleanupCandidates;
   const isPidAlive = dependencies.isPidAlive ?? defaultIsPidAlive;
-  const sendSignal = dependencies.sendSignal ?? ((pid: number, signal: NodeJS.Signals) => process.kill(pid, signal));
+  const sendSignal = dependencies.sendSignal ?? ((pid: number, signal: NodeJS.Signals) => {
+    if (process.platform === 'win32') {
+      // On Windows, process.kill() only targets a single PID. Use taskkill /T
+      // to recursively kill the whole process tree.
+      try {
+        execFileSync('taskkill', ['/F', '/T', '/PID', String(pid)], {
+          windowsHide: true,
+          stdio: 'ignore',
+        });
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ESRCH') throw err;
+      }
+    } else {
+      process.kill(pid, signal);
+    }
+  });
   const sleep = dependencies.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
   const now = dependencies.now ?? Date.now;
 

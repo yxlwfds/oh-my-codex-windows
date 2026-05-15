@@ -217,6 +217,7 @@ async function editNativeAgent(
   const result = spawnSync(editor, [path], {
     stdio: 'inherit',
     shell: true,
+    windowsHide: true,
     env: process.env,
   });
   if (result.status !== 0) {

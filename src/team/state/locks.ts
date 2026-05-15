@@ -137,6 +137,14 @@ export async function withTaskClaimLock<T>(
   while (true) {
     try {
       await mkdir(lockDir);
+      // Write owner token immediately after mkdir to avoid zombie lock window
+      // where the lock directory exists but has no owner file.
+      try {
+        await writeFile(ownerPath, ownerToken, 'utf8');
+      } catch (writeErr) {
+        await rm(lockDir, { recursive: true, force: true });
+        throw writeErr;
+      }
       break;
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
@@ -148,12 +156,6 @@ export async function withTaskClaimLock<T>(
   }
 
   try {
-    try {
-      await writeFile(ownerPath, ownerToken, 'utf8');
-    } catch (error) {
-      await rm(lockDir, { recursive: true, force: true });
-      throw error;
-    }
     return { ok: true, value: await fn() };
   } finally {
     try {

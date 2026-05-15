@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { buildPlatformCommandSpec } from '../utils/platform-command.js';
 
@@ -42,7 +42,17 @@ function killProcessTree(child: ChildProcess, platform: NodeJS.Platform, signal:
   if (child.pid === undefined) return;
   try {
     if (platform === 'win32') {
-      child.kill(signal);
+      // On Windows, child.kill() only terminates the direct wrapper process.
+      // Use taskkill /T (tree) to recursively kill all descendants.
+      try {
+        execFileSync('taskkill', ['/F', '/T', '/PID', String(child.pid)], {
+          windowsHide: true,
+          stdio: 'ignore',
+        });
+      } catch {
+        // Fall back to child.kill if taskkill fails (e.g. process already exited)
+        child.kill('SIGKILL');
+      }
       return;
     }
     // Children are launched as a detached process group on POSIX so a negative
@@ -203,7 +213,6 @@ export function runProcessTreeWithTimeout(
       stderr = appendBoundedOutput(stderr, chunk);
     });
     const sweepProcessGroupAfterParentExit = (): void => {
-      if (platform === 'win32') return;
       killProcessTree(child, platform, killSignal);
       const residualSigkillTimer = setTimeout(() => {
         killProcessTree(child, platform, 'SIGKILL');

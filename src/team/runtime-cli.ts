@@ -9,7 +9,8 @@
 
 import { createInterface } from 'readline';
 import { readdirSync, readFileSync } from 'fs';
-import { writeFile, rename } from 'fs/promises';
+import { writeFile } from 'fs/promises';
+import { atomicWriteFile } from '../utils/atomic-write.js';
 import { join } from 'path';
 import { startTeam, monitorTeam, shutdownTeam } from './runtime.js';
 import type { TeamRuntime, TeamShutdownSummary, StaleTeamSummary } from './runtime.js';
@@ -106,11 +107,7 @@ async function writePanesFile(
   if (!jobId || !omxJobsDir) return;
 
   const panesPath = join(omxJobsDir, `${jobId}-panes.json`);
-  await writeFile(
-    panesPath + '.tmp',
-    JSON.stringify({ paneIds: [...paneIds], leaderPaneId }),
-  );
-  await rename(panesPath + '.tmp', panesPath);
+  await atomicWriteFile(panesPath, JSON.stringify({ paneIds: [...paneIds], leaderPaneId }));
 }
 
 export async function loadLivePaneState(teamName: string, cwd: string): Promise<LivePaneState | null> {

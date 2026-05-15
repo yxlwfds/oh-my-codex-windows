@@ -6,7 +6,8 @@
  * It must not depend on idle/heartbeat freshness or inferred progress stalls.
  */
 
-import { appendFile, mkdir, rename, writeFile } from 'fs/promises';
+import { appendFile, mkdir, writeFile } from 'fs/promises';
+import { atomicWriteFile } from '../../utils/atomic-write.js';
 import { dirname, join } from 'path';
 import { DEFAULT_MARKER } from '../tmux-hook-engine.js';
 import { appendTeamDeliveryLog } from '../../team/delivery-log.js';
@@ -51,9 +52,7 @@ async function appendWorkerStopEvent(stateDir, teamName, event) {
 
 async function writeStopNudgeState(statePath, state) {
   await mkdir(dirname(statePath), { recursive: true }).catch(() => {});
-  const tmpPath = `${statePath}.tmp.${process.pid}`;
-  await writeFile(tmpPath, JSON.stringify(state, null, 2));
-  await rename(tmpPath, statePath);
+  await atomicWriteFile(statePath, JSON.stringify(state, null, 2));
 }
 
 async function recordDeferred({

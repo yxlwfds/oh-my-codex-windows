@@ -9,11 +9,11 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
-  renameSync,
   rmSync,
   unlinkSync,
   writeFileSync,
 } from 'fs';
+import { atomicWriteFileSync as atomicWriteFileSyncShared } from '../utils/atomic-write.js';
 import { dirname, join, resolve, sep } from 'path';
 import { omxLegacyWikiDir, omxWikiDir } from '../utils/paths.js';
 import {
@@ -29,30 +29,8 @@ const ENVIRONMENT_FILE = 'environment.md';
 const RESERVED_FILES = new Set([INDEX_FILE, LOG_FILE, ENVIRONMENT_FILE]);
 
 function atomicWriteFileSync(path: string, content: string): void {
-  mkdirSync(dirname(path), { recursive: true });
-  const tmpPath = `${path}.${process.pid}.${Date.now()}.tmp`;
-  writeFileSync(tmpPath, content, 'utf8');
-  try {
-    renameSync(tmpPath, path);
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    // Windows: rename may fail with EPERM/EBUSY if target is locked by antivirus or another process
-    if ((err.code === 'EPERM' || err.code === 'EBUSY') && process.platform === 'win32') {
-      // Retry up to 3 times with small delays
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          // Use synchronous sleep for sync function
-          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50 * attempt);
-          unlinkSync(path);
-          renameSync(tmpPath, path);
-          return;
-        } catch {
-          // Retry failed, continue to next attempt
-        }
-      }
-    }
-    throw error;
-  }
+  // Delegate to shared utility
+  atomicWriteFileSyncShared(path, content, { encoding: 'utf8' });
 }
 
 function lockPathFor(path: string): string {

@@ -1166,7 +1166,7 @@ async function checkNativePostCompactHookRuntime(
 				OMX_NATIVE_HOOK_DOCTOR_SMOKE: "1",
 			},
 			input: payload,
-			shell: true,
+			windowsHide: true,
 			timeout: 5_000,
 		});
 

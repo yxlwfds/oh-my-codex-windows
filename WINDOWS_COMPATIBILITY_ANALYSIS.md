@@ -1204,3 +1204,372 @@ node --test dist/scripts/__tests__/windows-hook-json.test.js
 # 并发压力测试（建议创建）
 node --test dist/scripts/__tests__/windows-concurrency.test.js
 ```
+
+---
+
+## 19. 补充审计 (Addendum) — 后续代码巡查发现
+
+> **审计基线**: 2026-05-15 代码巡查（read-only review）
+> **范围**: §1–§18 之外的新发现，仅记录此前文档未覆盖的条目
+> **关联引用**: 每个条目末尾用 *See also* 链接到主文档相关章节
+
+### 19.1 总览 (Summary Table)
+
+| # | 优先级 | 标题 | 类别 | 修复成本 |
+|---|--------|------|------|---------|
+| 1 | 🔴 P0 | reply-listener daemon Windows 身份校验直接 `return false` | 单实例 / IPC | 中 |
+| 2 | 🔴 P0 | PowerShell shim `continue` 在无 loop 上下文中失效 | Hook 启动稳定性 | 低 |
+| 3 | 🔴 P0 | `writeSessionStart` / `reconcileNativeSessionStart` 非原子写 | 并发 / 热路径 | 低 |
+| 4 | 🟡 P1 | 12+ 处缺 EPERM/EBUSY 重试的"伪原子写" | Windows 并发 | 低（批量） |
+| 5 | 🟡 P1 | `runtime/process-tree.ts` Windows 仅 `child.kill`，无法清理子树 | 进程树清理 | 中 |
+| 6 | 🟡 P1 | `cli/cleanup.ts` Windows `process.kill` 仅杀单进程 | 多开清理 | 中 |
+| 7 | 🟡 P1 | `mcp/bootstrap.listProcessTable` Windows 直接 `return null` | 多开去重 | 中 |
+| 8 | 🟢 P2 | `notify-fallback-state.json` 缺 session-scope（PID 已修，state 未修） | 多开（无隔离时） | 低 |
+| 9 | 🟢 P2 | watcher / reply-listener 未监听 `SIGBREAK` | Windows 信号 | 低 |
+| 10 | 🟢 P2 | 三处遗留 `shell: true`（doctor / agents / autoresearch） | Windows 兼容 | 低 |
+| 11 | 🟢 P2 | `team/worktree.ts` `branchExists` 缺 `windowsHide` | 一致性 | 低 |
+| 12 | 🟢 P2 | `linkProjectResources` Windows dir symlink 无 junction fallback | 隔离启动 | 低 |
+| 13 | 🟢 P2 | `team/state/locks.ts` mkdir/writeFile 间隙存在僵尸锁窗口 | 并发恢复 | 中 |
+
+---
+
+### 19.2 P0 必修
+
+#### 19.2.1 reply-listener daemon 身份校验在 Windows 直接放弃 🔴
+
+**位置**: `src/notifications/reply-listener.ts:295`
+
+```typescript
+// reply-listener.ts L288-303
+try {
+  const platform = options.platform ?? process.platform;
+  if (platform === 'linux') {
+    const cmdline = readFileSync(`/proc/${pid}/cmdline`, 'utf-8');
+    return cmdline.includes(DAEMON_IDENTITY_MARKER);
+  }
+  if (process.platform === 'win32') return false;   // ← Windows 永远视为"非 daemon 进程"
+  // POSIX: ps -p <pid> -o args=
+  const { result } = spawnPlatformCommandSync('ps', ...);
+```
+
+**根因 (Root cause)**: Windows 上没有 `/proc`，也没有走 `tasklist` / `wmic` 兜底，函数直接返回 `false`。这导致 `isDaemonRunning()` 在 Windows 上**永远报告 daemon 不存在**。
+
+**影响 (Impact)**:
+1. 启动新 reply-listener 时，`removePidFile()` 会被错误触发 → 把存活的 daemon 的 PID 文件删掉
+2. 紧接着启动新 daemon → 两份 daemon 共存 → 抢占同一 SQLite registry → 锁竞争 + 重复回复
+3. 多 owx 并发时表现尤为严重，本质上 daemon 单实例机制在 Windows 上失效
+
+**最佳实践 (Recommended fix)**: 复用 `src/cli/cleanup.ts` 中已有的 `WINDOWS_PROCESS_DISCOVERY_SCRIPT`（基于 `Get-CimInstance Win32_Process`），抽到 `src/utils/process-list.ts` 共享，验证目标 PID 的 CommandLine 包含 `DAEMON_IDENTITY_MARKER`。
+
+**See also**: §14.8（reply-session-registry 并发）、§7（Windows 进程探测）。
+
+---
+
+#### 19.2.2 PowerShell shim 内 `continue` 在无循环上下文中失效 🔴
+
+**位置**: `src/config/codex-hooks.ts:188`
+
+```powershell
+# buildManagedCodexNativeHookWindowsShimContent() 生成的 shim 片段
+try {
+  $null = $process.Start()
+} catch {
+  if ([DateTime]::UtcNow -ge $deadline) {
+    [Console]::Out.WriteLine('{}')
+    exit 0
+  }
+  Start-Sleep -Milliseconds 200
+  continue   # ← 此处没有外层循环！
+}
+$stdoutTask = $process.StandardOutput.ReadToEndAsync()
+```
+
+**根因**: `try/catch` 块**不在任何循环里**。PowerShell 的 `continue` 在无 `for` / `while` / `do` / `foreach` 上下文中：
+- 等同于"跳出当前作用域"（部分版本）或抛出 `ContinueException`（严格模式）
+- 既不会重试 `$process.Start()`，也不会跳过后续 `$stdoutTask = ...`
+
+实际行为：
+1. `$process.Start()` 偶发失败（如 `node.exe` 被防病毒短暂挂起）
+2. catch 走完后**立即继续执行** `$process.StandardOutput.ReadToEndAsync()`
+3. `$process` 对象未启动 → NullReferenceException → shim 异常退出（非 0 exitcode）
+4. Codex 报 `error: hook returned invalid <event> JSON output`（与 §1 现象一致，但根因不同）
+
+**最佳实践**: 用 `while ($true) { try { $null = $process.Start(); break } catch { ...; continue } }` 把 try/catch 包进真正的循环。
+
+**See also**: §1（Hook JSON 输出）、§2.1（Shim 路径）。本条目是 §1 修复后残留的边角问题。
+
+---
+
+#### 19.2.3 `writeSessionStart` / `reconcileNativeSessionStart` 非原子写 🔴
+
+**位置**: `src/hooks/session.ts:306` 与 `src/hooks/session.ts:363`
+
+```typescript
+// writeSessionStart
+await writeFile(sessionPath(cwd), JSON.stringify(state, null, 2));
+
+// reconcileNativeSessionStart
+await writeFile(sessionPath(cwd), JSON.stringify(state, null, 2));
+```
+
+**根因**: 直接 `writeFile` 覆盖目标文件，未走 temp + rename 模式，且无 EPERM/EBUSY 处理。`session.json` 是 **SessionStart hook 热路径**，每次会话开始或 Codex 重新连接时都会触发。
+
+**影响**:
+- §14.2 已通过"默认隔离"缓解多进程乒乓覆盖
+- 但 `OMX_NO_ISOLATE=1` / 共享 `OMX_ROOT` / CI / 同 worker 复用同 `cwd` 等场景仍会复活旧问题
+- 在 Windows 上 `writeFile` 的部分写入窗口 + Defender 锁定会让其他进程读到截断的 JSON
+
+**最佳实践**: 复用已加固的 `writeAtomic`（§12.1，含 EPERM/EBUSY 重试），把这两处改成原子写入。
+
+**See also**: §14.2、§14.5、§12.1。
+
+---
+
+### 19.3 P1 应修
+
+#### 19.3.1 12+ 处缺 EPERM/EBUSY 重试的"伪原子写" 🟡
+
+§12.1 已加固 5 个核心原子写函数。本轮巡查发现还有以下未对齐 Windows 重试模式的写入点（直接 `rename` 失败抛出，或 `writeFile` 覆盖）：
+
+| 文件 | 函数 / 行号 | 当前模式 |
+|------|------------|---------|
+| `src/state/operations.ts:78` | `writeAtomicFile` | rename 失败仅 unlink tmp，不重试 |
+| `src/runtime/run-state.ts:146` | `writeAtomicFile` | 同上 |
+| `src/hooks/triage-state.ts:100` | `renameSync` | swallow catch，状态可能不一致 |
+| `src/hooks/codebase-map.ts:97` | `rename` | catch 删 tmp，无重试 |
+| `src/scripts/notify-hook/team-worker.ts:346` | heartbeat write | 无错误处理 |
+| `src/scripts/notify-hook/team-worker.ts:565` | prev-state write | swallow catch |
+| `src/scripts/notify-hook/team-worker.ts:614` | cooldown deferred | swallow catch |
+| `src/scripts/notify-hook/team-worker.ts:659` | cooldown notify | swallow catch |
+| `src/scripts/notify-hook/ralph-session-resume.ts:128` | `writeJsonAtomic` | 无重试 |
+| `src/scripts/notify-hook/team-worker-stop.ts:56` | `writeStopNudgeState` | 无重试 |
+| `src/scripts/notify-fallback-watcher.ts:794` | `writeRalphSteerTimestamp` | 无重试 |
+| `src/scripts/notify-fallback-watcher.ts:1090` | `persistReboundRalphPaneState` | 无重试 |
+| `src/mcp/memory-server.ts:301` | notepad PRIORITY | 无重试 |
+| `src/mcp/memory-server.ts:322` | notepad WORKING MEMORY | 无重试 |
+| `src/mcp/memory-server.ts:343` | notepad MANUAL | 无重试 |
+
+**最佳实践**: 抽出公共工具 `src/utils/atomic-write.ts`（导出 `atomicRenameWithWindowsRetry(tmp, dest)`），全项目替换为统一 helper。当前的 5 处 ad-hoc 重试逻辑会被吸收进同一函数。
+
+**See also**: §11.1、§12.1。
+
+---
+
+#### 19.3.2 `runtime/process-tree.ts` Windows 无法清理子进程树 🟡
+
+**位置**: `src/runtime/process-tree.ts:41-47`
+
+```typescript
+function killProcessTree(child: ChildProcess, platform: NodeJS.Platform, signal: NodeJS.Signals): void {
+  if (child.pid === undefined) return;
+  try {
+    if (platform === 'win32') {
+      child.kill(signal);   // ← 仅 TerminateProcess，只杀直接子进程
+      return;
+    }
+    process.kill(-child.pid, signal);   // POSIX: 杀整个进程组
+```
+
+**根因**: Windows 上 `child.kill(...)` ≡ `TerminateProcess(<pid>)`，**不会传递到孙子进程**。如果 child 又 spawn 了二级进程（极常见：`tmux` / `powershell -File` / `pwsh -File <script>` 又拉起 node），这些孙子进程会成为孤儿。
+
+**最佳实践**: Windows 分支调用 `taskkill /T /F /PID <pid>`（`/T` 杀整个进程树，`/F` 强制）。建议封装到 `src/utils/process-tree.ts` 的 `killTreeForPlatform()` 通用函数。
+
+**See also**: §11.7、§7（Windows 进程开销）。
+
+---
+
+#### 19.3.3 `cli/cleanup.ts` Windows 上 `process.kill` 仅杀单进程 🟡
+
+**位置**: `src/cli/cleanup.ts:423`
+
+```typescript
+const sendSignal = dependencies.sendSignal
+  ?? ((pid: number, signal: NodeJS.Signals) => process.kill(pid, signal));
+```
+
+**根因**: cleanup 用于回收 MCP server 孤儿。Windows 上 `process.kill` 等价于 `TerminateProcess`，与 19.3.2 同源问题。MCP server 自身 spawn 的工具子进程会脱挂，演化为真正的孤儿。
+
+**最佳实践**: Windows 分支用 `execFileSync('taskkill', ['/T', '/F', '/PID', String(pid)], { windowsHide: true })`。复用 19.3.2 的 helper。
+
+**See also**: §14.6、§19.3.2。
+
+---
+
+#### 19.3.4 MCP duplicate sibling detection 在 Windows 完全禁用 🟡
+
+**位置**: `src/mcp/bootstrap.ts:116-121`
+
+```typescript
+export function listProcessTable(
+  readPs: typeof execFileSync = execFileSync,
+): ProcessTableEntry[] | null {
+  if (process.platform === 'win32') {
+    return null;   // ← Windows 直接放弃，导致 analyzeDuplicateSiblingState 拿不到数据
+  }
+  // POSIX: ps -axo pid=,ppid=,command=
+```
+
+**根因**: Windows 上 `listProcessTable` 直接 return null，因此 `analyzeDuplicateSiblingState`、`older_duplicate` / `newer_sibling` 仲裁逻辑在 Windows 上**全部失效**。多 owx 同时启动时可能拉起多份同入口的 MCP server，并发写入共享状态。
+
+**最佳实践**: Windows 分支用 `Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, CommandLine` 输出 CSV/JSON 后解析。`src/cli/cleanup.ts` 已有 `WINDOWS_PROCESS_DISCOVERY_SCRIPT`，应抽到 `src/utils/process-list.ts` 与 19.2.1 共用。
+
+**See also**: §14.8、§19.2.1。
+
+---
+
+### 19.4 P2 可修
+
+#### 19.4.1 `notify-fallback-state.json` 缺 session-scope 🟢
+
+**位置**: `src/scripts/notify-fallback-watcher.ts:164`
+
+```typescript
+const stateDir = join(omxDir, 'state');
+const statePath = join(stateDir, 'notify-fallback-state.json');   // ← 没有 sessionId
+const pidFilePath = resolve(argValue('--pid-file', join(stateDir, 'notify-fallback.pid')));
+```
+
+**根因**: §14.6 已把 PID 文件改成 `notify-fallback.{sessionId}.pid`，但同期生成的 state 文件仍是固定名。当用户禁用默认隔离（`OMX_NO_ISOLATE=1` / 共享 `OMX_ROOT`）时，多 watcher 同写一个 state 文件 → ralph steer state、authority backoff 等数据互相覆盖。
+
+**最佳实践**: 把 `statePath` 一并改成 `notify-fallback-state.{sessionId}.json`，并在隔离禁用模式下加 mkdir 锁保护写入路径。
+
+**See also**: §14.6。
+
+---
+
+#### 19.4.2 watcher / reply-listener 未监听 `SIGBREAK` 🟢
+
+**位置**: `src/scripts/notify-fallback-watcher.ts:2005-2007`、`src/scripts/hook-derived-watcher.ts`、`src/notifications/reply-listener.ts`
+
+```typescript
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGHUP', () => shutdown('SIGHUP'));
+// ← 缺 SIGBREAK，Ctrl+Break 不会触发优雅关闭
+```
+
+**根因**: Windows 不传递 `SIGHUP`；按 `Ctrl+Break` 触发的是 `SIGBREAK`。`src/winmux/daemon/lifecycle.ts:115` 已经做对了（同时监听 SIGBREAK），但 watcher 系列脚本漏掉。结果：在 Windows 控制台用 Ctrl+Break 关闭 watcher 不会跑 shutdown，会留下僵尸 PID 文件 + state 残留。
+
+**最佳实践**: 所有可能在 Windows 上常驻的脚本统一补 `process.on('SIGBREAK' as NodeJS.Signals, ...)`，与 winmux daemon 保持一致。建议抽到 `src/utils/lifecycle-signals.ts`。
+
+**See also**: §11.8、winmux daemon `installLifecycle`。
+
+---
+
+#### 19.4.3 三处遗留 `shell: true` 风险 🟢
+
+| 位置 | 风险 |
+|------|------|
+| `src/cli/doctor.ts:1161-1171` | smoke test 跑 `powershell.exe -File <shim>`，过 `shell: true`，shim 路径含空格时丢参；且**未设 `windowsHide`**，会闪 console 窗口 |
+| `src/cli/agents.ts:216-221` | `editor ?? 'vi'` — Windows 上 vi 默认不存在；`shell: true` 让 path 暴露给 cmd 解析 |
+| `src/autoresearch/runtime.ts:475-481` | `contract.sandbox.evaluator.command` 是任意字符串，`shell: true` 等价于命令注入入口 |
+
+**最佳实践**: 三处都改为 `execFile(command, args, { windowsHide: true, ... })` + argv 拆分，避免 shell 解析。doctor 的 smoke 应该改为：
+
+```typescript
+spawnSync('powershell.exe',
+  ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', shimPath],
+  { encoding: 'utf-8', windowsHide: true, ... });
+```
+
+**See also**: §3.3、§11.7。
+
+---
+
+#### 19.4.4 `team/worktree.ts:116` `branchExists` 缺 `windowsHide` 🟢
+
+```typescript
+function branchExists(repoRoot: string, branchName: string): boolean {
+  const result = spawnSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branchName}`], {
+    cwd: repoRoot,
+    encoding: 'utf-8',
+    // ← 缺 windowsHide: true（同文件其他 9 处 git 调用都有）
+  });
+```
+
+**根因**: 同一文件其他 git 调用都有 `windowsHide: true`，唯独此处遗漏。Windows 上若被 `cmd /c` 包过，会偶发闪一下黑窗。一致性问题。
+
+**最佳实践**: 加一行 `windowsHide: true`。
+
+**See also**: §11.7。
+
+---
+
+#### 19.4.5 `linkProjectResources` Windows dir symlink 无 junction fallback 🟢
+
+**位置**: `src/cli/index.ts:1285-1291`
+
+```typescript
+if (existsSync(sourcePlansDir)) {
+  try {
+    symlinkSync(sourcePlansDir, targetPlansDir, "dir");   // ← Win 需要 SeCreateSymbolicLinkPrivilege
+  } catch {
+    // Non-critical: plans can be session-specific
+  }
+}
+```
+
+**根因**: Windows 上 `symlinkSync(..., "dir")` 默认要求 Admin 或开发者模式。普通用户落 catch 后 plans/ 在隔离目录里完全缺失，注释说"non-critical"，但实际上 plans 目录的丢失会破坏 ralph PRD 跨进程可见性。
+
+**最佳实践**: catch 内补 `symlinkSync(target, path, 'junction')` 兜底（NTFS junction 不需要特权），仍失败再考虑 `cp -r` 快照。
+
+**See also**: §14.10（Madmax 自动隔离）。
+
+---
+
+#### 19.4.6 `team/state/locks.ts` mkdir/writeFile 间隙的僵尸锁窗口 🟢
+
+**位置**: `src/team/state/locks.ts:46-65` 等 4 处（withScalingLock / withTeamLock / withTaskClaimLock / withMailboxLock）
+
+```typescript
+while (true) {
+  try {
+    await mkdir(lockDir);
+    try {
+      await writeFile(ownerPath, ownerToken, 'utf8');
+    } catch (error) {
+      await rm(lockDir, { recursive: true, force: true });
+      throw error;
+    }
+    break;
+```
+
+**根因**: 进程 A `mkdir` 成功 → 进程 A 在 `writeFile(ownerPath)` 之前崩溃 → 锁目录存在但无 owner 文件。当前 `maybeRecoverStaleLock` 基于 `mtimeMs > lockStaleMs` 判定，所以**所有竞争者必须 busy-wait 到 stale 超时**（5–10 秒级）才能回收。
+
+**最佳实践**: 在 `maybeRecoverStaleLock` 中加快速路径——"owner 文件不存在且 lockDir 已 ≥ 数百毫秒"立即视为 stale 回收，可显著缩短异常恢复时间。
+
+**See also**: §11.2、§11.3。
+
+---
+
+### 19.5 建议补充的测试
+
+| 覆盖目标 | 建议测试 | 备注 |
+|---------|---------|------|
+| 19.2.1 | reply-listener Win 身份校验集成测试 | 用 mocked Win32_Process 输出验证 `isReplyListenerProcess` 正确返回 true/false |
+| 19.2.2 | shim Start 失败的退避循环 | 用 mock node.exe 路径制造首次 Start 失败，验证 shim 不抛出 NRE |
+| 19.2.3 | `writeSessionStart` 多进程并发 | 与现有 `windows-concurrency.test.ts` 同框架，验证最终 session.json 是 valid JSON |
+| 19.3.1 | `atomicRenameWithWindowsRetry` 单元测试 | 模拟 EPERM/EBUSY 触发重试，验证最终 rename 成功 |
+| 19.3.2 / 19.3.3 | Windows 进程树终止 | 仅 win32 启用，spawn 子→孙进程，断言 `taskkill /T /F` 后所有 PID 不存在 |
+| 19.3.4 | `listProcessTable` Win 实现 | mock `Get-CimInstance` CSV 输出，验证 duplicate detection 正确分类 |
+
+---
+
+### 19.6 修复路线图 (Fix Roadmap)
+
+按风险与工作量推荐合入顺序：
+
+1. **P0 三条独立合入**（建议各自一个 PR）
+   - `fix(notifications): verify reply-listener daemon identity on Windows` (19.2.1)
+   - `fix(hooks): wrap PowerShell shim Start retry in real loop` (19.2.2)
+   - `fix(hooks): make writeSessionStart atomic with Windows EPERM retry` (19.2.3)
+
+2. **P1 共享基础设施**（一个 refactor PR + 多个 follow-up）
+   - `refactor: extract atomicRenameWithWindowsRetry helper` （19.3.1，含 12+ 处替换）
+   - `feat(utils): unify killTreeForPlatform via taskkill /T /F on Windows`（19.3.2 + 19.3.3）
+   - `feat(mcp): enable listProcessTable on Windows via Get-CimInstance`（19.3.4，与 19.2.1 共享 helper）
+
+3. **P2 housekeeping**（可合并为单一 PR）
+   - 19.4.1 / 19.4.2 / 19.4.4 / 19.4.5 行级补丁
+   - 19.4.3 三处 `shell: true` → `execFile`
+   - 19.4.6 lock 快速回收路径

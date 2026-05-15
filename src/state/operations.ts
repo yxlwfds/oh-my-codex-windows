@@ -1,6 +1,8 @@
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+
+import { atomicWriteFile } from '../utils/atomic-write.js';
 
 import { withModeRuntimeContext } from './mode-state-context.js';
 import {
@@ -75,15 +77,8 @@ async function withStateWriteLock<T>(path: string, fn: () => Promise<T>): Promis
   }
 }
 
-async function writeAtomicFile(path: string, data: string): Promise<void> {
-  const tmpPath = `${path}.tmp.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}`;
-  await writeFile(tmpPath, data, 'utf-8');
-  try {
-    await rename(tmpPath, path);
-  } catch (error) {
-    await unlink(tmpPath).catch(() => {});
-    throw error;
-  }
+async function writeStateFile(path: string, data: string): Promise<void> {
+  await atomicWriteFile(path, data);
 }
 
 async function writeClearedSessionScopedModeState(
@@ -100,7 +95,7 @@ async function writeClearedSessionScopedModeState(
     completed_at: nowIso,
     session_id: sessionId,
   });
-  await writeAtomicFile(path, JSON.stringify(clearedState, null, 2));
+  await writeStateFile(path, JSON.stringify(clearedState, null, 2));
 }
 
 function readModeSupportsStrictValidation(mode: string): mode is SupportedStateReadMode {
@@ -315,7 +310,7 @@ export async function executeStateOperation(
           }
 
           const merged = withModeRuntimeContext(existing, mergedRaw);
-          await writeAtomicFile(path, JSON.stringify(merged, null, 2));
+          await writeStateFile(path, JSON.stringify(merged, null, 2));
         });
 
         if (validationError) {

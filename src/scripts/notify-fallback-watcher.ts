@@ -2,8 +2,9 @@
 
 import { existsSync } from 'fs';
 import { appendFile, mkdir, open, readFile, readdir, rename, rm, stat, unlink, writeFile } from 'fs/promises';
+import { atomicWriteFile } from '../utils/atomic-write.js';
 import { spawnSync } from 'child_process';
-import { dirname, join, resolve } from 'path';
+import { basename, dirname, join, resolve } from 'path';
 import { homedir } from 'os';
 import { StringDecoder } from 'string_decoder';
 import { spawnPlatformCommandSync } from '../utils/platform-command.js';
@@ -94,32 +95,8 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-let atomicJsonWriteCounter = 0;
-
 async function writeJsonObjectAtomically(path: string, value: unknown): Promise<void> {
-  const tempPath = `${path}.${process.pid}.${Date.now()}.${++atomicJsonWriteCounter}.tmp`;
-  try {
-    await writeFile(tempPath, JSON.stringify(value, null, 2));
-    await rename(tempPath, path);
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    // Windows: rename may fail with EPERM/EBUSY if target is locked by antivirus or another process
-    if ((err.code === 'EPERM' || err.code === 'EBUSY') && process.platform === 'win32') {
-      // Retry up to 3 times with small delays
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          await new Promise(resolve => setTimeout(resolve, 50 * attempt));
-          await rm(path, { force: true });
-          await rename(tempPath, path);
-          return;
-        } catch {
-          // Retry failed, continue to next attempt
-        }
-      }
-    }
-    await rm(tempPath, { force: true }).catch(() => {});
-    throw error;
-  }
+  await atomicWriteFile(path, JSON.stringify(value, null, 2));
 }
 
 async function waitForPidExit(pid: number, timeoutMs = 3000, stepMs = 50): Promise<boolean> {
@@ -161,8 +138,14 @@ const runtimeRoot = resolve(process.env.OMX_ROOT || process.env.OMX_STATE_ROOT |
 const omxDir = join(runtimeRoot, '.omx');
 const logsDir = join(omxDir, 'logs');
 const stateDir = join(omxDir, 'state');
-const statePath = join(stateDir, 'notify-fallback-state.json');
 const pidFilePath = resolve(argValue('--pid-file', join(stateDir, 'notify-fallback.pid')));
+
+// Derive a session-scoped state file path from the PID file name.
+// PID file: notify-fallback.{sessionId}.pid → state: notify-fallback-state.{sessionId}.json
+const pidBaseName = basename(pidFilePath, '.pid');
+const statePath = pidBaseName !== 'notify-fallback'
+  ? join(stateDir, `${pidBaseName.replace(/^notify-fallback/, 'notify-fallback-state')}.json`)
+  : join(stateDir, 'notify-fallback-state.json');
 const logPath = join(logsDir, `notify-fallback-${new Date().toISOString().split('T')[0]}.jsonl`);
 const logRotatePath = `${logPath}.1`;
 const logLockPath = `${logPath}.lock`;
@@ -788,10 +771,7 @@ async function readRalphSteerTimestamp(): Promise<string> {
 }
 
 async function writeRalphSteerTimestamp(nowIso: string): Promise<void> {
-  await mkdir(dirname(ralphSteerTimestampPath), { recursive: true }).catch(() => {});
-  const tempPath = `${ralphSteerTimestampPath}.${process.pid}.tmp`;
-  await writeFile(tempPath, `${nowIso}\n`, 'utf-8');
-  await rename(tempPath, ralphSteerTimestampPath);
+  await atomicWriteFile(ralphSteerTimestampPath, `${nowIso}\n`);
 }
 
 async function readRalphSteerLock(path: string): Promise<RalphSteerLockRecord | null> {
@@ -1085,13 +1065,7 @@ async function persistReboundRalphPaneState(
     tmux_pane_set_at: nowIso,
   };
   const tmpPath = `${statePath}.tmp.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}`;
-  await writeFile(tmpPath, JSON.stringify(nextState, null, 2));
-  try {
-    await rename(tmpPath, statePath);
-  } catch (error) {
-    await unlink(tmpPath).catch(() => {});
-    throw error;
-  }
+  await atomicWriteFile(statePath, JSON.stringify(nextState, null, 2));
   return nextState;
 }
 
@@ -2005,6 +1979,7 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGHUP', () => shutdown('SIGHUP'));
+  process.on('SIGBREAK' as NodeJS.Signals, () => shutdown('SIGBREAK'));
 
   if (await enforceLifecycleGuards()) return;
 

@@ -1,5 +1,6 @@
 import { existsSync } from 'fs';
-import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'fs/promises';
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'fs/promises';
+import { atomicWriteFile } from '../../utils/atomic-write.js';
 import { dirname, join, resolve } from 'path';
 import { captureTmuxPaneFromEnv } from '../../state/mode-state-context.js';
 import { isSessionStateUsable } from '../../hooks/session.js';
@@ -122,10 +123,7 @@ async function readJson(path: string): Promise<Record<string, unknown> | null> {
 }
 
 async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true }).catch(() => {});
-  const tempPath = `${path}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  await writeFile(tempPath, JSON.stringify(value, null, 2));
-  await rename(tempPath, path);
+  await atomicWriteFile(path, JSON.stringify(value, null, 2));
 }
 
 function isTerminalRalphPhase(value: unknown): boolean {

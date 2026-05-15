@@ -117,7 +117,22 @@ export function listProcessTable(
   readPs: typeof execFileSync = execFileSync,
 ): ProcessTableEntry[] | null {
   if (process.platform === 'win32') {
-    return null;
+    // On Windows, use PowerShell to enumerate processes in a format
+    // compatible with parseProcessTable (pid ppid command).
+    try {
+      const output = readPs(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-Command',
+          'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId) $($_.CommandLine)" }',
+        ],
+        { encoding: 'utf-8', windowsHide: true },
+      );
+      return parseProcessTable(output);
+    } catch {
+      return null;
+    }
   }
 
   try {

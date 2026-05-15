@@ -1,4 +1,5 @@
-import { appendFile, readFile, writeFile, mkdir, rm, rename, readdir, unlink } from 'fs/promises';
+import { appendFile, readFile, writeFile, mkdir, rm, readdir } from 'fs/promises';
+import { atomicWriteFile, setAtomicWriteRenameForTests } from '../utils/atomic-write.js';
 import { join, dirname, resolve, sep } from 'path';
 import { existsSync } from 'fs';
 import { randomUUID } from 'crypto';
@@ -343,14 +344,11 @@ export interface TaskApprovalRecord {
   decided_at: string;
 }
 
-let renameForAtomicWrite: typeof rename = rename;
+export { setAtomicWriteRenameForTests as setWriteAtomicRenameForTests } from '../utils/atomic-write.js';
+export { resetAtomicWriteRenameForTests as resetWriteAtomicRenameForTests } from '../utils/atomic-write.js';
 
-export function setWriteAtomicRenameForTests(fn: typeof rename): void {
-  renameForAtomicWrite = fn;
-}
-
-export function resetWriteAtomicRenameForTests(): void {
-  renameForAtomicWrite = rename;
+export async function writeAtomic(filePath: string, data: string): Promise<void> {
+  await atomicWriteFile(filePath, data, { encoding: 'utf8' });
 }
 export type TaskReadiness =
   | { ready: true }
@@ -712,44 +710,6 @@ function isTeamManifestV2(value: unknown): value is TeamManifestV2 {
   if (!v.policy || typeof v.policy !== 'object') return false;
   if (!v.permissions_snapshot || typeof v.permissions_snapshot !== 'object') return false;
   return true;
-}
-
-// Atomic write: write to {path}.tmp.{pid}, then rename
-export async function writeAtomic(filePath: string, data: string): Promise<void> {
-  const parent = dirname(filePath);
-  await mkdir(parent, { recursive: true });
-
-  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}`;
-  await writeFile(tmpPath, data, 'utf8');
-
-  try {
-    await renameForAtomicWrite(tmpPath, filePath);
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    // Windows: rename may fail with EPERM/EBUSY if target is locked by antivirus or another process
-    if ((err.code === 'EPERM' || err.code === 'EBUSY') && process.platform === 'win32') {
-      // Retry up to 3 times with small delays
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          await new Promise(resolve => setTimeout(resolve, 50 * attempt)); // Exponential backoff
-          await unlink(filePath);
-          await renameForAtomicWrite(tmpPath, filePath);
-          return;
-        } catch {
-          // Retry failed, continue to next attempt
-        }
-      }
-    }
-    if (err.code === 'ENOENT' && existsSync(filePath)) {
-      try {
-        const existing = await readFile(filePath, 'utf8');
-        if (existing === data) return;
-      } catch {
-        // Preserve original ENOENT below if destination cannot be read.
-      }
-    }
-    throw error;
-  }
 }
 
 // Initialize team state directory + config.json

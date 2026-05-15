@@ -10,6 +10,7 @@ import { dirname, join } from 'path';
 import { existsSync, readFileSync } from 'fs';
 import { omxRoot, omxStateDir, omxLogsDir, sameFilePath } from '../utils/paths.js';
 import { getStateFilePath } from '../mcp/state-paths.js';
+import { atomicWriteFile } from '../utils/atomic-write.js';
 
 export interface SessionState {
   session_id: string;
@@ -303,7 +304,7 @@ export async function writeSessionStart(
     tmuxSessionName: options.tmuxSessionName,
   });
 
-  await writeFile(sessionPath(cwd), JSON.stringify(state, null, 2));
+  await atomicWriteFile(sessionPath(cwd), JSON.stringify(state, null, 2));
   await appendToLog(cwd, {
     event: 'session_start',
     session_id: sessionId,
@@ -360,7 +361,7 @@ export async function reconcileNativeSessionStart(
     tmuxSessionName: existing.tmux_session_name,
   });
 
-  await writeFile(sessionPath(cwd), JSON.stringify(state, null, 2));
+  await atomicWriteFile(sessionPath(cwd), JSON.stringify(state, null, 2));
   await appendToLog(cwd, {
     event: 'session_start_reconciled',
     session_id: state.session_id,

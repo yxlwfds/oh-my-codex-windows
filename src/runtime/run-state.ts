@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 
 import { getStateFilePath, resolveStateScope } from '../mcp/state-paths.js';
+import { atomicWriteFile } from '../utils/atomic-write.js';
 import {
   classifyRunOutcome,
   compatibilityRunOutcomeFromTerminalLifecycleOutcome,
@@ -143,15 +144,8 @@ function getRunStatePath(workingDirectory?: string, sessionId?: string): string 
   return getStateFilePath(RUN_STATE_FILENAME, workingDirectory, sessionId);
 }
 
-async function writeAtomicFile(path: string, data: string): Promise<void> {
-  const tmpPath = `${path}.tmp.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}`;
-  await writeFile(tmpPath, data, 'utf-8');
-  try {
-    await rename(tmpPath, path);
-  } catch (error) {
-    await unlink(tmpPath).catch(() => {});
-    throw error;
-  }
+async function writeStateFile(path: string, data: string): Promise<void> {
+  await atomicWriteFile(path, data);
 }
 
 export async function readRunState(
@@ -180,6 +174,6 @@ export async function syncRunStateFromModeState(
 
   const existing = await readRunState(workingDirectory, scope.sessionId);
   const next = buildRunState(state, existing);
-  await writeAtomicFile(path, JSON.stringify(next, null, 2));
+  await writeStateFile(path, JSON.stringify(next, null, 2));
   return next;
 }

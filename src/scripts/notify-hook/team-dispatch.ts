@@ -1,5 +1,6 @@
 // @ts-nocheck
-import { appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'fs/promises';
+import { appendFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'fs/promises';
+import { atomicWriteFile } from '../../utils/atomic-write.js';
 import { appendFileSync, existsSync, mkdirSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { dirname, join, resolve } from 'path';
@@ -181,10 +182,7 @@ async function readBridgeDispatchRequests(stateDir, teamName) {
 }
 
 async function writeJsonAtomic(path, value) {
-  await mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  await writeFile(tmp, JSON.stringify(value, null, 2));
-  await rename(tmp, path);
+  await atomicWriteFile(path, JSON.stringify(value, null, 2));
 }
 
 // Keep stale-timeout semantics aligned with src/team/state.ts LOCK_STALE_MS.

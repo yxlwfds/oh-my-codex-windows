@@ -5,7 +5,7 @@
 
 import { execFileSync, spawn } from "child_process";
 import { basename, dirname, join, posix, win32 } from "path";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "fs";
 import { copyFile, cp, lstat, mkdir, readFile, readdir, rm, symlink, writeFile } from "fs/promises";
 import { constants as osConstants, homedir } from "os";
 import {
@@ -1279,14 +1279,20 @@ function linkProjectResources(sourceOmxDir: string, isolatedOmxDir: string): voi
     }
   }
 
-  // Symlink plans directory if it exists
+  // Symlink plans directory if it exists.
+  // Use junction on Windows (no admin required) with copy fallback.
   const sourcePlansDir = join(sourceOmxDir, "plans");
   const targetPlansDir = join(isolatedOmxDir, "plans");
   if (existsSync(sourcePlansDir)) {
     try {
-      symlinkSync(sourcePlansDir, targetPlansDir, "dir");
+      symlinkSync(sourcePlansDir, targetPlansDir, process.platform === "win32" ? "junction" : "dir");
     } catch {
-      // Non-critical: plans can be session-specific
+      try {
+        // Fall back to recursive copy on Windows when junction also fails
+        cpSync(sourcePlansDir, targetPlansDir, { recursive: true, force: true });
+      } catch {
+        // Non-critical: plans can be session-specific
+      }
     }
   }
 }
