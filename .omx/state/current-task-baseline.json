@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "branch_name": "main",
+      "worktree_path": "D:\\code\\my\\oh-my-codex",
+      "status": "active",
+      "created_at": "2026-05-13T09:41:59.203Z",
+      "updated_at": "2026-05-14T05:59:46.436Z"
+    },
+    {
+      "branch_name": "subagent-deepseek-rate-limit",
+      "worktree_path": "D:\\code\\my\\oh-my-codex",
+      "status": "active",
+      "created_at": "2026-05-16T03:18:05.845Z",
+      "updated_at": "2026-05-16T03:19:34.266Z"
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+{"event":"session_start","session_id":"test-1","native_session_id":"test-1","pid":52416,"timestamp":"2026-05-15T10:19:00.572Z","_ts":"2026-05-15T10:19:00.575Z"}
+{"event":"session_start","session_id":"test-2","native_session_id":"test-2","pid":52416,"timestamp":"2026-05-15T10:19:01.088Z","_ts":"2026-05-15T10:19:01.091Z"}

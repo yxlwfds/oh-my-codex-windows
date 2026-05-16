@@ -622,11 +622,19 @@ export function resolveExploreEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   const codexHomeOverride = resolveCodexHomeForLaunch(cwd, env);
-  return {
+  const baseEnv: NodeJS.ProcessEnv = {
     ...env,
     ...(codexHomeOverride ? { CODEX_HOME: codexHomeOverride } : {}),
     [EXPLORE_ACTIVE_ENV]: '1',
   };
+
+  // 集成子代理: 如果全局未禁用 (--nds),则探索模式默认使用子代理
+  // 这样可以节省主代理 token,同时利用缓存加速重复任务
+  if (!Object.hasOwn(env, 'OMX_SUBAGENT_MODE') || !env.OMX_SUBAGENT_MODE) {
+    baseEnv.OMX_SUBAGENT_MODE = 'subagent';
+  }
+
+  return baseEnv;
 }
 
 export async function loadExplorePrompt(parsed: ParsedExploreArgs): Promise<string> {

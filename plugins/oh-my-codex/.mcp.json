@@ -47,6 +47,14 @@
         "hermes"
       ],
       "enabled": false
+    },
+    "omx_subagent": {
+      "command": "omx",
+      "args": [
+        "mcp-serve",
+        "subagent"
+      ],
+      "enabled": true
     }
   }
 }

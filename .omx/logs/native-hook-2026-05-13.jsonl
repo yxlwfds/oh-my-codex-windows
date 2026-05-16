@@ -1,0 +1,3 @@
+{"timestamp":"2026-05-13T03:49:01.211Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Expected property name or '}' in JSON at position 1 (line 1 column 2)"}
+{"timestamp":"2026-05-13T03:52:37.418Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Expected property name or '}' in JSON at position 1 (line 1 column 2)"}
+{"timestamp":"2026-05-13T03:52:45.474Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Expected property name or '}' in JSON at position 1 (line 1 column 2)"}

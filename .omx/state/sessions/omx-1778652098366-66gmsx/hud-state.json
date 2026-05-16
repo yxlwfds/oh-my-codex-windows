@@ -1,0 +1,6 @@
+{
+  "last_turn_at": "2026-05-13T15:06:45.762Z",
+  "last_progress_at": "2026-05-13T15:06:45.762Z",
+  "turn_count": 20,
+  "last_agent_output": "已取消启动时自动更新，保留 `owx update` 作为手动更新入口。\n\n改动：\n- `src/cli/index.ts`：移除启动/exec 路径里的自动更新检查调用\n- `src/cli/upd"
+}

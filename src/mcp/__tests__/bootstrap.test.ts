@@ -29,6 +29,7 @@ const ALL_SERVERS: readonly McpServerName[] = [
   'trace',
   'wiki',
   'hermes',
+  'subagent',
 ] as const;
 
 const SERVER_DISABLE_ENV: Record<McpServerName, string> = {
@@ -38,6 +39,7 @@ const SERVER_DISABLE_ENV: Record<McpServerName, string> = {
   trace: 'OMX_TRACE_SERVER_DISABLE_AUTO_START',
   wiki: 'OMX_WIKI_SERVER_DISABLE_AUTO_START',
   hermes: 'OMX_HERMES_SERVER_DISABLE_AUTO_START',
+  subagent: 'OMX_SUBAGENT_SERVER_DISABLE_AUTO_START',
 };
 
 const SERVER_ENTRYPOINTS: Array<{ server: McpServerName; file: string }> = [
@@ -47,6 +49,7 @@ const SERVER_ENTRYPOINTS: Array<{ server: McpServerName; file: string }> = [
   { server: 'trace', file: 'src/mcp/trace-server.ts' },
   { server: 'wiki', file: 'src/mcp/wiki-server.ts' },
   { server: 'hermes', file: 'src/mcp/hermes-server.ts' },
+  { server: 'subagent', file: 'src/mcp/subagent-server.ts' },
 ];
 
 describe('mcp bootstrap auto-start guard', () => {

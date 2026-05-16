@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "worktreeRoot": "D:\\code\\my\\oh-my-codex",
+  "gitDir": "D:\\code\\my\\oh-my-codex\\.git",
+  "indexMtimeMs": 1778735628174.0781,
+  "indexSize": 121046,
+  "map": "  src/: index\n  src/adapt/: foundation.test, hermes.test, contracts, hermes, openclaw, paths, registry\n  src/agents/: definitions.test, native-config.test, definitions, native-config, policy\n  src/autoresearch/: contracts.test, runtime-parity-extra.test, runtime.test, skill-validation.test, contracts, goal, runtime, skill-validation\n  src/catalog/: generator.test, plugin-bundle-ssot.test, schema.test, installable, reader, schema, skill-mirror\n  src/cli/: adapt-help.test, adapt.test, agents-init.test, agents.test, ask.test, autoresearch-goal.test, autoresearch-guided.test, autoresearch.test, catalog-contract.test, cleanup.test\n  src/compat/: doctor-contract.test, rust-runtime-compat.test\n  src/config/: codex-feature-flags.test, codex-hooks.test, generator-idempotent.test, generator-notify.test, generator-status-line-presets.test, mcp-registry.test, models.test, wiki-config-contract.test, codex-feature-flags, codex-hooks\n  src/document-refresh/: enforcer.test, config, enforcer\n  src/e...",
+  "createdAt": "2026-05-14T06:05:57.008Z"
+}

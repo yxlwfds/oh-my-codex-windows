@@ -47,6 +47,7 @@ import { mcpParityCommand } from "./mcp-parity.js";
 import { mcpServeCommand } from "./mcp-serve.js";
 import { adaptCommand } from "./adapt.js";
 import { listCommand } from "./list.js";
+import { rateLimitCommand } from "./rate-limit.js";
 import {
   MADMAX_FLAG,
   CODEX_BYPASS_FLAG,
@@ -254,6 +255,9 @@ Options:
   --notify-temp  Enable temporary notification routing for this run/session only
   --direct       Launch the interactive leader directly without OMX tmux/HUD management
   --tmux         Launch the interactive leader session in detached tmux
+  --nds          Disable DeepSeek subagent globally, use native mode for all subagent tasks
+  --no-deepseek-subagent
+                 Alias for --nds (disable DeepSeek subagent globally)
   --discord      Select Discord provider for temporary notification mode
   --slack        Select Slack provider for temporary notification mode
   --telegram     Select Telegram provider for temporary notification mode
@@ -368,6 +372,7 @@ type CliCommand =
   | "cancel"
   | "help"
   | "reasoning"
+  | "rate-limit"
   | string;
 
 const NESTED_HELP_COMMANDS = new Set<CliCommand>([
@@ -1324,6 +1329,15 @@ function activateMadmaxIsolationIfNeeded(
 }
 
 export async function main(args: string[]): Promise<void> {
+  // 全局 DeepSeek 子代理开关: --nds 或 --no-deepseek-subagent
+  // 如果设置,则全局禁用 DeepSeek 子代理,使用原生模式
+  const hasNdsFlag = args.includes('--nds') || args.includes('--no-deepseek-subagent');
+  if (hasNdsFlag) {
+    process.env.OMX_SUBAGENT_MODE = 'native';
+    // 从参数中移除,避免传递给子命令
+    args = args.filter(a => a !== '--nds' && a !== '--no-deepseek-subagent');
+  }
+
   const knownCommands = new Set([
     "launch",
     "exec",
@@ -1358,6 +1372,8 @@ export async function main(args: string[]): Promise<void> {
     "mcp-serve",
     "status",
     "cancel",
+    "rate-limit",
+    "subagent",
     "help",
     "--help",
     "-h",
@@ -1521,6 +1537,14 @@ export async function main(args: string[]): Promise<void> {
         break;
       case "reasoning":
         await reasoningCommand(args.slice(1));
+        break;
+      case "rate-limit":
+        await rateLimitCommand(args.slice(1));
+        break;
+      case "subagent":
+        // 直接调用子代理 CLI 模块
+        const { subagentCommand } = await import("./subagent.js");
+        await subagentCommand(args.slice(1));
         break;
       case "help":
       case "--help":

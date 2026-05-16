@@ -70,7 +70,7 @@ function walkFiles(root: string, dir: string, out: string[]): void {
       continue;
     }
     if (stats.isFile() && /\.(md|ts)$/.test(entry)) {
-      out.push(rel);
+      out.push(rel.replace(/\\/g, '/'));
     }
   }
 }
@@ -178,8 +178,8 @@ export function renderPromptInventoryMarkdown(report: PromptInventoryReport): st
   const duplicates = report.duplicateFragmentFamilies.length === 0
     ? ['- None detected.']
     : report.duplicateFragmentFamilies.map(
-        (family) => `- ${family.count} files: ${family.text}\n  - ${family.paths.join(', ')}`,
-      );
+      (family) => `- ${family.count} files: ${family.text}\n  - ${family.paths.join(', ')}`,
+    );
 
   return [
     '# Prompt Inventory',

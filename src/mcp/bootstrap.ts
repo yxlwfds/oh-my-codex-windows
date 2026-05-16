@@ -3,7 +3,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { resolveOmxFirstPartyMcpEntrypointForPluginTarget } from '../config/omx-first-party-mcp.js';
 import { writeMcpLifecycleTelemetry } from './lifecycle-telemetry.js';
 
-export type McpServerName = 'state' | 'memory' | 'code_intel' | 'trace' | 'wiki' | 'hermes';
+export type McpServerName = 'state' | 'memory' | 'code_intel' | 'trace' | 'wiki' | 'hermes' | 'subagent';
 
 const SERVER_DISABLE_ENV: Record<McpServerName, string> = {
   state: 'OMX_STATE_SERVER_DISABLE_AUTO_START',
@@ -12,6 +12,7 @@ const SERVER_DISABLE_ENV: Record<McpServerName, string> = {
   trace: 'OMX_TRACE_SERVER_DISABLE_AUTO_START',
   wiki: 'OMX_WIKI_SERVER_DISABLE_AUTO_START',
   hermes: 'OMX_HERMES_SERVER_DISABLE_AUTO_START',
+  subagent: 'OMX_SUBAGENT_SERVER_DISABLE_AUTO_START',
 };
 
 const GLOBAL_DISABLE_ENV = 'OMX_MCP_SERVER_DISABLE_AUTO_START';
@@ -68,6 +69,7 @@ const SERVER_ENTRYPOINT: Record<McpServerName, string> = {
   trace: 'trace-server.js',
   wiki: 'wiki-server.js',
   hermes: 'hermes-server.js',
+  subagent: 'subagent-server.js',
 };
 
 function normalizeCommand(command: string): string {

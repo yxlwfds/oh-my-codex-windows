@@ -10,6 +10,14 @@ type OmxFirstPartyMcpSpec = {
   entrypoint: string;
   pluginTarget: string;
   startupTimeoutSec: number;
+  /**
+   * Per-spec default for the plugin manifest's `enabled` flag.
+   * When unset (default), the global flag passed to {@link buildOmxPluginMcpManifest}
+   * applies. When set explicitly, this overrides the global flag for this spec only.
+   * Used by `omx_subagent` to ship enabled-by-default while keeping the other
+   * plugin-bundled MCP servers opt-in.
+   */
+  defaultPluginEnabled?: boolean;
 };
 
 const OMX_FIRST_PARTY_MCP_SPECS: readonly OmxFirstPartyMcpSpec[] = [
@@ -54,6 +62,17 @@ const OMX_FIRST_PARTY_MCP_SPECS: readonly OmxFirstPartyMcpSpec[] = [
     entrypoint: "hermes-server.js",
     pluginTarget: "hermes",
     startupTimeoutSec: 5,
+  },
+  {
+    name: "omx_subagent",
+    title: "# OMX Execution Subagent MCP Server (Terminus-4B-style delegated terminal runner, DeepSeek V4 Flash)",
+    entrypoint: "subagent-server.js",
+    pluginTarget: "subagent",
+    startupTimeoutSec: 10,
+    // Ship enabled-by-default in the codex plugin manifest so the main agent can
+    // discover delegate_terminal_task without any setup-time opt-in. The other
+    // plugin-bundled MCP servers remain opt-in.
+    defaultPluginEnabled: true,
   },
 ] as const;
 
@@ -119,7 +138,10 @@ export function buildOmxPluginMcpManifest(
         {
           command: OMX_PLUGIN_MCP_COMMAND,
           args: [OMX_PLUGIN_MCP_SERVE_SUBCOMMAND, spec.pluginTarget],
-          enabled: options.enabled === true,
+          enabled:
+            spec.defaultPluginEnabled === true
+              ? true
+              : options.enabled === true,
         },
       ]),
     ),

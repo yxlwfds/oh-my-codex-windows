@@ -1,0 +1,3 @@
+﻿{"hook_event_name":"UserPromptSubmit","prompt":"请帮我跑 npm install,然后告诉我安装了多少个包。","cwd":"d:\\code\\my\\oh-my-codex"}
+
+

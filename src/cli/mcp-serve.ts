@@ -32,6 +32,7 @@ const MCP_SERVE_LOADERS: McpServeLoaderMap = {
   "trace-server.js": async () => await import("../mcp/trace-server.js"),
   "wiki-server.js": async () => await import("../mcp/wiki-server.js"),
   "hermes-server.js": async () => await import("../mcp/hermes-server.js"),
+  "subagent-server.js": async () => await import("../mcp/subagent-server.js"),
 };
 
 const MCP_SERVE_TARGET_ALIASES: Record<string, McpServeEntrypoint> = {
@@ -55,6 +56,9 @@ const MCP_SERVE_TARGET_ALIASES: Record<string, McpServeEntrypoint> = {
   hermes: "hermes-server.js",
   "hermes-server": "hermes-server.js",
   "hermes-server.js": "hermes-server.js",
+  subagent: "subagent-server.js",
+  "subagent-server": "subagent-server.js",
+  "subagent-server.js": "subagent-server.js",
 };
 
 export function normalizeOmxMcpServeTarget(

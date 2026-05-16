@@ -133,36 +133,90 @@ where
         )
     })?;
 
-    let spark_attempt = invoke_codex(&args, &args.spark_model, &prompt_contract)
-        .map_err(|err| format!("spark attempt failed to launch: {err}"))?;
-    if spark_attempt.status_code == 0 {
-        print_attempt_output(spark_attempt)?;
-        return Ok(());
+    // 检测是否启用子代理模式
+    let use_subagent = should_use_subagent();
+    
+    if use_subagent {
+        // 使用子代理模式 (DeepSeek V4 Flash,避免 429 错误)
+        eprintln!("[omx explore] 使用子代理模式 (DeepSeek V4 Flash)");
+        
+        let spark_attempt = invoke_subagent(&args, &prompt_contract)
+            .map_err(|err| format!("spark attempt failed to launch: {err}"))?;
+        if spark_attempt.status_code == 0 {
+            print_attempt_output(spark_attempt)?;
+            return Ok(());
+        }
+
+        let fallback_event = FallbackEvent {
+            from_model: args.spark_model.clone(),
+            to_model: args.fallback_model.clone(),
+            exit_code: spark_attempt.status_code,
+            stderr: spark_attempt.stderr.clone(),
+        };
+        emit_model_fallback_event(&fallback_event);
+
+        let fallback_attempt = invoke_subagent(&args, &prompt_contract)
+            .map_err(|err| format!("fallback attempt failed to launch: {err}"))?;
+        if fallback_attempt.status_code == 0 {
+            print_attempt_output_with_fallback(fallback_attempt, &fallback_event)?;
+            return Ok(());
+        }
+
+        Err(format!(
+            "both spark and fallback subagent attempts failed (codes {} / {}). Last stderr: {}",
+            spark_attempt.status_code,
+            fallback_attempt.status_code,
+            fallback_attempt.stderr.trim()
+        ))
+    } else {
+        // 使用 Codex LLM 模式 (向后兼容)
+        eprintln!("[omx explore] 使用 Codex LLM 模式");
+        
+        let spark_attempt = invoke_codex(&args, &args.spark_model, &prompt_contract)
+            .map_err(|err| format!("spark attempt failed to launch: {err}"))?;
+        if spark_attempt.status_code == 0 {
+            print_attempt_output(spark_attempt)?;
+            return Ok(());
+        }
+
+        let fallback_event = FallbackEvent {
+            from_model: args.spark_model.clone(),
+            to_model: args.fallback_model.clone(),
+            exit_code: spark_attempt.status_code,
+            stderr: spark_attempt.stderr.clone(),
+        };
+        emit_model_fallback_event(&fallback_event);
+
+        let fallback_attempt = invoke_codex(&args, &args.fallback_model, &prompt_contract)
+            .map_err(|err| format!("fallback attempt failed to launch: {err}"))?;
+        if fallback_attempt.status_code == 0 {
+            print_attempt_output_with_fallback(fallback_attempt, &fallback_event)?;
+            return Ok(());
+        }
+
+        Err(format!(
+            "both spark (`{}`) and fallback (`{}`) attempts failed (codes {} / {}). Last stderr: {}",
+            args.spark_model,
+            args.fallback_model,
+            spark_attempt.status_code,
+            fallback_attempt.status_code,
+            fallback_attempt.stderr.trim()
+        ))
     }
+}
 
-    let fallback_event = FallbackEvent {
-        from_model: args.spark_model.clone(),
-        to_model: args.fallback_model.clone(),
-        exit_code: spark_attempt.status_code,
-        stderr: spark_attempt.stderr.clone(),
-    };
-    emit_model_fallback_event(&fallback_event);
-
-    let fallback_attempt = invoke_codex(&args, &args.fallback_model, &prompt_contract)
-        .map_err(|err| format!("fallback attempt failed to launch: {err}"))?;
-    if fallback_attempt.status_code == 0 {
-        print_attempt_output_with_fallback(fallback_attempt, &fallback_event)?;
-        return Ok(());
+/// 检测是否应该使用子代理模式
+fn should_use_subagent() -> bool {
+    // 检查环境变量
+    let subagent_mode = env::var("OMX_SUBAGENT_MODE").unwrap_or_default();
+    
+    // 如果明确设置为 native,则不使用子代理
+    if subagent_mode.to_lowercase() == "native" {
+        return false;
     }
-
-    Err(format!(
-        "both spark (`{}`) and fallback (`{}`) attempts failed (codes {} / {}). Last stderr: {}",
-        args.spark_model,
-        args.fallback_model,
-        spark_attempt.status_code,
-        fallback_attempt.status_code,
-        fallback_attempt.stderr.trim()
-    ))
+    
+    // 如果设置为 subagent,或者未设置(默认使用子代理)
+    subagent_mode.to_lowercase() == "subagent" || subagent_mode.is_empty()
 }
 
 fn print_attempt_output(attempt: AttemptResult) -> Result<(), String> {
@@ -382,6 +436,121 @@ fn invoke_codex(args: &Args, model: &str, prompt_contract: &str) -> io::Result<A
             output_markdown: None,
         }),
     }
+}
+
+/// 调用子代理执行探索任务 (使用 DeepSeek V4 Flash,避免 429 错误)
+fn invoke_subagent(args: &Args, prompt_contract: &str) -> io::Result<AttemptResult> {
+    // 获取 owx 可执行文件路径
+    let owx_bin = resolve_owx_bin();
+    let output_path = temp_output_path();
+    let final_prompt = compose_exec_prompt(&args.prompt, prompt_contract);
+    
+    // 构建子代理命令
+    let mut command = Command::new(&owx_bin);
+    command
+        .arg("subagent")
+        .arg("execute")
+        .arg("-q")
+        .arg(&final_prompt)
+        .arg("-o")
+        .arg(&output_path)
+        .current_dir(&args.cwd);
+    
+    // 继承探索模式的环境变量
+    command.env(HARNESS_ROOT_ENV, &args.cwd);
+    command.env("OMX_SUBAGENT_MODE", "subagent"); // 确保使用子代理模式
+    
+    sanitize_explore_subprocess_env(&mut command);
+    
+    let timeout = codex_timeout();
+    let output = run_command_with_timeout(command, timeout)?;
+    
+    // 读取输出文件
+    let markdown = read_to_string(&output_path).ok();
+    let _ = remove_file(&output_path);
+    
+    match output {
+        TimedCommandOutput::Completed(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+            
+            // 检查是否降级到原生模式
+            let is_fallback = stderr.contains("降级到原生模式");
+            
+            Ok(AttemptResult {
+                status_code: output.status.code().unwrap_or(1),
+                stderr: if is_fallback {
+                    format!("[subagent] DeepSeek 不可用,已降级到原生模式\n{}", stderr)
+                } else {
+                    stderr
+                },
+                output_markdown: markdown,
+            })
+        }
+        TimedCommandOutput::TimedOut { stderr } => Ok(AttemptResult {
+            status_code: 124,
+            stderr: format!(
+                "[omx explore] subagent exec timed out after {}ms; terminated process tree{}{}",
+                timeout.as_millis(),
+                if stderr.trim().is_empty() {
+                    ""
+                } else {
+                    ". stderr before timeout: "
+                },
+                stderr.trim()
+            ),
+            output_markdown: None,
+        }),
+        TimedCommandOutput::ProcessLimitExceeded {
+            stderr,
+            process_count,
+            process_limit,
+        } => Ok(AttemptResult {
+            status_code: 125,
+            stderr: format!(
+                "[omx explore] subagent exec exceeded per-run process limit ({process_count}>{process_limit}); terminated process tree{}{}",
+                if stderr.trim().is_empty() {
+                    ""
+                } else {
+                    ". stderr before termination: "
+                },
+                stderr.trim()
+            ),
+            output_markdown: None,
+        }),
+        TimedCommandOutput::OutputLimitExceeded {
+            stderr,
+            output_limit,
+            stream,
+        } => Ok(AttemptResult {
+            status_code: 126,
+            stderr: format!(
+                "[omx explore] subagent exec exceeded subprocess {stream} output limit ({output_limit} bytes); terminated process tree{}{}",
+                if stderr.trim().is_empty() {
+                    ""
+                } else {
+                    ". stderr before termination: "
+                },
+                stderr.trim()
+            ),
+            output_markdown: None,
+        }),
+    }
+}
+
+/// 解析 owx 可执行文件路径
+fn resolve_owx_bin() -> PathBuf {
+    // 优先使用环境变量指定
+    if let Ok(owx_bin) = env::var("OMX_EXPLORE_OWx_BIN") {
+        return PathBuf::from(owx_bin);
+    }
+    
+    // 默认在当前目录或 PATH 中查找 owx
+    if let Some(path) = resolve_host_command("owx") {
+        return path;
+    }
+    
+    // 回退到 codex (向后兼容)
+    resolve_codex_launch().program.into()
 }
 
 #[derive(Debug)]

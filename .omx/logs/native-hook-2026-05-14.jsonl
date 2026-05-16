@@ -1,0 +1,35 @@
+{"timestamp":"2026-05-14T01:41:52.781Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 611 (line 1 column 612)"}
+{"timestamp":"2026-05-14T01:47:35.605Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Expected ',' or '}' after property value in JSON at position 95 (line 1 column 96)"}
+{"timestamp":"2026-05-14T01:53:45.748Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 421 (line 1 column 422)"}
+{"timestamp":"2026-05-14T01:55:57.189Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 396 (line 1 column 397)"}
+{"timestamp":"2026-05-14T02:01:59.062Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 2113 (line 1 column 2114)"}
+{"timestamp":"2026-05-14T02:30:27.688Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 383 (line 1 column 384)"}
+{"timestamp":"2026-05-14T02:49:49.527Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 2440 (line 1 column 2441)"}
+{"timestamp":"2026-05-14T02:50:06.196Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 383 (line 1 column 384)"}
+{"timestamp":"2026-05-14T02:52:24.819Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 383 (line 1 column 384)"}
+{"timestamp":"2026-05-14T03:02:50.174Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 415 (line 1 column 416)"}
+{"timestamp":"2026-05-14T03:07:44.048Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Expected property name or '}' in JSON at position 1 (line 1 column 2)"}
+{"timestamp":"2026-05-14T03:11:34.292Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Expected property name or '}' in JSON at position 1 (line 1 column 2)"}
+{"timestamp":"2026-05-14T03:17:13.437Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Expected property name or '}' in JSON at position 1 (line 1 column 2)"}
+{"timestamp":"2026-05-14T03:18:33.970Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 1020 (line 1 column 1021)"}
+{"timestamp":"2026-05-14T03:34:53.132Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 408 (line 1 column 409)"}
+{"timestamp":"2026-05-14T03:37:19.911Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 812 (line 1 column 813)"}
+{"timestamp":"2026-05-14T03:43:44.740Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 383 (line 1 column 384)"}
+{"timestamp":"2026-05-14T03:44:14.480Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 685 (line 1 column 686)"}
+{"timestamp":"2026-05-14T03:44:20.877Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 383 (line 1 column 384)"}
+{"timestamp":"2026-05-14T03:45:18.279Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 397 (line 1 column 398)"}
+{"timestamp":"2026-05-14T03:46:49.771Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 397 (line 1 column 398)"}
+{"timestamp":"2026-05-14T03:47:01.823Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 397 (line 1 column 398)"}
+{"timestamp":"2026-05-14T03:47:24.323Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 426 (line 1 column 427)"}
+{"timestamp":"2026-05-14T03:47:39.775Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 426 (line 1 column 427)"}
+{"timestamp":"2026-05-14T03:48:12.133Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 397 (line 1 column 398)"}
+{"timestamp":"2026-05-14T03:48:20.746Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 686 (line 1 column 687)"}
+{"timestamp":"2026-05-14T04:16:47.829Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 1984 (line 1 column 1985)"}
+{"timestamp":"2026-05-14T05:13:47.946Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unterminated string in JSON at position 383 (line 1 column 384)"}
+{"timestamp":"2026-05-14T09:27:44.666Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Expected property name or '}' in JSON at position 1 (line 1 column 2)"}
+{"timestamp":"2026-05-14T09:28:39.167Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Expected property name or '}' in JSON at position 1 (line 1 column 2)"}
+{"timestamp":"2026-05-14T09:31:02.899Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unexpected token 'o', \"not valid j\"... is not valid JSON"}
+{"timestamp":"2026-05-14T09:32:25.925Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unexpected token 'o', \"not valid j\"... is not valid JSON"}
+{"timestamp":"2026-05-14T09:34:05.744Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unexpected token 'o', \"not valid j\"... is not valid JSON"}
+{"timestamp":"2026-05-14T09:35:57.340Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unexpected token 'o', \"not valid j\"... is not valid JSON"}
+{"timestamp":"2026-05-14T12:06:32.824Z","type":"native_hook_stdin_parse_error","hook_event_name":"Unknown","error":"Unexpected token 'o', \"not valid j\"... is not valid JSON"}

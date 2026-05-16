@@ -65,19 +65,40 @@ describe("plugin bundle SSOT contract", () => {
 		const pluginMcp = JSON.parse(
 			await readFile(join(root, "plugins", "oh-my-codex", ".mcp.json"), "utf-8"),
 		) as { mcpServers?: Record<string, { enabled?: boolean }> };
-		assert.deepEqual(
-			Object.values(pluginMcp.mcpServers ?? {}).map((server) => server.enabled),
-			Object.values(pluginMcp.mcpServers ?? {}).map(() => false),
-			"checked-in plugin MCP metadata must be disabled by default",
-		);
+		for (const [name, server] of Object.entries(pluginMcp.mcpServers ?? {})) {
+			if (name === "omx_subagent") {
+				assert.equal(
+					server.enabled,
+					true,
+					"omx_subagent ships enabled-by-default (Terminus-4B-style delegation MCP tool)",
+				);
+				continue;
+			}
+			assert.equal(
+				server.enabled,
+				false,
+				`${name} must be disabled by default (opt-in plugin MCP server)`,
+			);
+		}
 	});
 
-	it("builds disabled plugin MCP metadata by default with explicit compat opt-in", () => {
+	it("builds disabled plugin MCP metadata by default except for the subagent delegation tool", () => {
 		const defaultManifest = buildOmxPluginMcpManifest();
-		assert.deepEqual(
-			Object.values(defaultManifest.mcpServers).map((server) => server.enabled),
-			Object.values(defaultManifest.mcpServers).map(() => false),
-		);
+		for (const [name, server] of Object.entries(defaultManifest.mcpServers)) {
+			if (name === "omx_subagent") {
+				assert.equal(
+					server.enabled,
+					true,
+					"omx_subagent ships enabled-by-default (Terminus-4B-style delegation MCP tool)",
+				);
+				continue;
+			}
+			assert.equal(
+				server.enabled,
+				false,
+				`${name} must remain opt-in unless { enabled: true } is passed`,
+			);
+		}
 
 		const compatManifest = buildOmxPluginMcpManifest({ enabled: true });
 		assert.deepEqual(

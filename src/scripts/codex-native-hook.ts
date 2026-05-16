@@ -3235,21 +3235,94 @@ export function isCodexNativeHookMainModule(
 }
 
 async function readStdinJson(): Promise<NativeHookCliReadResult> {
+  // Base64 解码方案：PowerShell shim 将 JSON 以 Base64 传入 stdin，
+  // 只包含 ASCII 安全字符，彻底免疫多字节截断和管道编码问题。
+  let raw = "";
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
   }
-  const raw = Buffer.concat(chunks).toString("utf-8").trim();
+  if (chunks.length > 0) {
+    const base64Data = Buffer.concat(chunks).toString("ascii").trim();
+    if (base64Data) {
+      try {
+        raw = Buffer.from(base64Data, "base64").toString("utf-8").trim();
+      } catch {
+        // Base64 解码失败时，尝试作为原始 JSON 直接使用
+        raw = base64Data;
+      }
+    }
+  }
+  
+  // 记录接收到的原始数据（用于调试）
+  if (raw) {
+    const logsDir = join(process.cwd(), ".omx", "logs");
+    await mkdir(logsDir, { recursive: true }).catch(() => {});
+    const debugLogPath = join(logsDir, `native-hook-stdin-${new Date().toISOString().split("T")[0]}.jsonl`);
+    await appendFile(
+      debugLogPath,
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        event: "stdin_received",
+        length: raw.length,
+        preview: raw.substring(0, 200),
+        full_content: raw.length > 2000 ? raw.substring(0, 2000) + "...[truncated]" : raw,
+      }) + "\n",
+    ).catch(() => {});
+  }
+  
   if (!raw) {
     return { payload: {}, parseError: null };
   }
 
+  // Windows PowerShell 可能会在 JSON 末尾添加额外的换行符或空格
+  // 尝试清理并修复常见的 JSON 格式问题
   try {
     return {
       payload: safeObject(JSON.parse(raw)),
       parseError: null,
     };
   } catch (error) {
+    // 记录解析错误的详细信息
+    const logsDir = join(process.cwd(), ".omx", "logs");
+    await mkdir(logsDir, { recursive: true }).catch(() => {});
+    const errorLogPath = join(logsDir, `native-hook-parse-error-${new Date().toISOString().split("T")[0]}.jsonl`);
+    await appendFile(
+      errorLogPath,
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        event: "json_parse_error",
+        error_message: error instanceof Error ? error.message : String(error),
+        error_position: error instanceof Error ? extractJsonErrorPosition(error.message) : null,
+        raw_length: raw.length,
+        raw_content: raw,
+      }) + "\n",
+    ).catch(() => {});
+    
+    // 如果是未终止字符串错误，尝试修复
+    if (error instanceof Error && error.message.includes("Unterminated string")) {
+      try {
+        // 尝试找到并修复未闭合的引号
+        const lastQuoteIndex = raw.lastIndexOf('"');
+        if (lastQuoteIndex > 0) {
+          // 检查是否在字符串内部被截断
+          const beforeLastQuote = raw.slice(0, lastQuoteIndex);
+          const quoteCount = (beforeLastQuote.match(/"/g) || []).length;
+          // 如果引号数量是奇数，说明有未闭合的引号
+          if (quoteCount % 2 === 1) {
+            // 找到最后一个完整的 JSON 结构
+            const fixedRaw = raw.slice(0, lastQuoteIndex) + '"';
+            return {
+              payload: safeObject(JSON.parse(fixedRaw)),
+              parseError: null,
+            };
+          }
+        }
+      } catch {
+        // 修复失败，继续使用原始错误
+      }
+    }
+    
     return {
       payload: {},
       parseError: error instanceof Error ? error : new Error(String(error)),
@@ -3267,6 +3340,19 @@ function writeNativeHookJsonStdout(output: Record<string, unknown>): void {
     process.stderr.write(`[omx-hook-serialize-error] ${error instanceof Error ? error.message : String(error)}\n`);
     process.stdout.write('{}\n');
   }
+}
+
+function extractJsonErrorPosition(errorMessage: string): number | null {
+  // 从错误消息中提取位置信息，例如 "at position 123" 或 "column 45"
+  const positionMatch = errorMessage.match(/position\s+(\d+)/i);
+  if (positionMatch) {
+    return parseInt(positionMatch[1], 10);
+  }
+  const columnMatch = errorMessage.match(/column\s+(\d+)/i);
+  if (columnMatch) {
+    return parseInt(columnMatch[1], 10);
+  }
+  return null;
 }
 
 async function logNativeHookCliError(
