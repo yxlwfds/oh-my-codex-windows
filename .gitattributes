@@ -1,0 +1,19 @@
+# Cross-platform line ending normalization
+#
+# Markdown files (skills, prompts, AGENTS.md, docs) are stored with LF endings
+# in the repository. Multiple contract tests compare canonical sources against
+# their plugin mirrors via strictEqual, which fails on Windows when
+# `core.autocrlf=true` rewrites checked-out files to CRLF.
+#
+# `text eol=lf` instructs git to:
+# - Normalize CRLF to LF on commit
+# - Check out as LF regardless of core.autocrlf
+*.md text eol=lf
+
+# Binary assets (kept out of any text conversion path)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
