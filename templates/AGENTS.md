@@ -281,6 +281,13 @@ Use `owx explore --prompt ...` for simple read-only lookups through the shell-on
 
 ExecutionSubagent (`owx subagent execute -q "<task>"`) is the Terminus-4B-style delegated terminal runner backed by DeepSeek V4 Flash. It runs commands in its own agentic loop and returns a structured `<final_answer>` summary (exit code, key errors with `file:line`, fix suggestions) instead of raw stdout, keeping main-agent context clean. Prefer it for: build/test suites, dependency installs, multi-step diagnostics that need to iterate over output, any command whose stdout is expected to exceed ~2 KB, and repeated tasks within the same session (cache hits return in ~0.1s). Avoid it for: one-shot reads where you need the verbatim output (`cat file`, `git diff`, `git log`), trivial single-line commands (`ls`, `pwd`, `which`), and editing tools — those stay on the normal Bash/Edit path. Pass full task semantics in `-q`, not just the bare command, so the subagent can iterate and summarize meaningfully (good: `owx subagent execute -q "run npm test, group failures by module, return only the top 3 errors per group plus a fix suggestion"`; weak: `owx subagent execute -q "npm test"`). Trust the returned `<final_answer>` summary as authoritative; only re-invoke with a more specific query if the summary is insufficient. The subagent already handles its own failure path: if DeepSeek is unavailable it transparently falls back to native execution, so callers do not need a backup invocation. Do not invoke ExecutionSubagent in parallel within a single decision — one call, wait for the summary, then continue.
 
+**ExecutionSubagent Explicit Rules:**
+For complex terminal tasks, you MUST use the subagent instead of raw bash:
+- **Build and Test**: execute `owx subagent execute -q "run build and test, analyze any failures"`
+- **Code Analysis**: execute `owx subagent execute -q "run lint and typecheck, list all quality issues"`
+- **Multi-step Ops**: execute `owx subagent execute -q "install dependencies, run tests, and generate coverage report"`
+- **Diagnostics**: execute `owx subagent execute -q "diagnose the build error and suggest the root cause"`
+
 Leader vs worker:
 - The leader chooses the mode, keeps the brief current, delegates bounded work, and owns verification plus stop/escalate calls.
 - Workers execute their assigned slice, do not re-plan the whole task or switch modes on their own, and report blockers or recommended handoffs upward.

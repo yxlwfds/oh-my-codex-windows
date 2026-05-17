@@ -40,3 +40,5 @@ snapshot.json
 .codex/skills/.system/**
 !.codex/prompts/
 !.codex/prompts/**
+# CocoIndex Code (ccc)
+/.cocoindex_code/

@@ -10,6 +10,7 @@
   },
   "scripts": {
     "build": "node -e \"const fs=require('fs'); fs.rmSync('dist',{recursive:true,force:true});\" && tsc && node -e \"require('fs').chmodSync('dist/cli/omx.js', 0o755); require('fs').chmodSync('dist/cli/owx.js', 0o755)\"",
+    "build:deploy": "npm run build && owx setup --force && node scripts/verify-hook-integrity.cjs",
     "build:explore": "cargo build -p omx-explore-harness",
     "build:full": "npm run build && npm run build:explore:release && npm run build:sparkshell",
     "build:explore:release": "node dist/scripts/build-explore-harness.js",

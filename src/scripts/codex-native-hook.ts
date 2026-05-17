@@ -703,6 +703,31 @@ async function readActiveRalphState(
     ) {
       continue;
     }
+
+    // Best practice fix: Sync completion state from project directory to run directory
+    // If project dir shows complete but run dir shows still active, trust project dir
+    if (sessionScoped?.active === true && sessionScoped.current_phase === "verifying") {
+      const projectDirPath = join(cwd, ".omx", "state", "sessions", sessionId, "ralph-state.json");
+      const projectScoped = await readJsonIfExists(projectDirPath);
+      if (projectScoped?.active === false && isRalphCompletePhase(projectScoped.current_phase)) {
+        // Project dir already completed, sync to run dir to prevent dead loop
+        const nowIso = new Date().toISOString();
+        const syncedState = {
+          ...sessionScoped,
+          active: false,
+          current_phase: "complete",
+          completed_at: projectScoped.completed_at ?? nowIso,
+          synced_from_project_at: nowIso,
+        };
+        try {
+          await writeFile(sessionScopedPath, JSON.stringify(syncedState, null, 2));
+        } catch (err) {
+          void err; // Best effort sync
+        }
+        continue; // Now treat as completed
+      }
+    }
+
     if (
       sessionScoped?.active === true
       && shouldContinueRun(sessionScoped)
@@ -3429,6 +3454,10 @@ export async function runCodexNativeHookCli(): Promise<void> {
     if (result.outputJson) {
       writeNativeHookJsonStdout(result.outputJson);
     } else if (result.hookEventName === "Stop") {
+      writeNativeHookJsonStdout({});
+    } else {
+      // SessionStart / UserPromptSubmit: always emit at least {} so Codex
+      // never sees empty stdout (which triggers "invalid ... JSON output").
       writeNativeHookJsonStdout({});
     }
   } catch (error) {
