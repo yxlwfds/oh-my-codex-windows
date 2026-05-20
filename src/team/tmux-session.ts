@@ -399,27 +399,22 @@ function encodePowerShellCommand(commandText: string): string {
 }
 
 function resolveNativeWindowsPowerShellPath(env: NodeJS.ProcessEnv = process.env): string {
-  const rootCandidates = [
-    env.SystemRoot,
-    env.SYSTEMROOT,
-    env.windir,
-    env.WINDIR,
-  ]
-    .map((value) => (typeof value === 'string' ? value.trim() : ''))
-    .filter((value, index, values) => value !== '' && values.indexOf(value) === index);
-  const systemPowerShellCandidates = rootCandidates.map(
-    (root) => `${root.replace(/[\\/]+$/, '')}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`,
-  );
-  const resolvedFromPath = resolveCommandPathForPlatform('powershell', process.platform, env);
+  const programFiles = env['ProgramFiles'] || 'C:\\Program Files';
+  const programFilesX86 = env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+  const commonCandidates = [
+    `${programFiles}\\PowerShell\\7\\pwsh.exe`,
+    `${programFilesX86}\\PowerShell\\7\\pwsh.exe`,
+  ];
+  const resolvedFromPath = resolveCommandPathForPlatform('pwsh', process.platform, env);
   const existingCandidates = [
-    ...systemPowerShellCandidates,
+    ...commonCandidates,
     resolvedFromPath,
   ].filter((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
 
   return existingCandidates.find((candidate) => !/\s/.test(candidate))
     ?? existingCandidates[0]
     ?? resolvedFromPath
-    ?? 'powershell.exe';
+    ?? 'pwsh.exe';
 }
 
 function normalizeTmuxHookToken(value: string): string {

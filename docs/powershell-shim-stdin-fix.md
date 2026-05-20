@@ -15,14 +15,14 @@
 
 ### 1.1 问题现象
 
-每次对话出现两个 hook 错误：
+每次对话出现多个 hook 错误（SessionStart、UserPromptSubmit、PreToolUse、PostToolUse 等）：
 
 ```
-UserPromptSubmit hook (failed) — error: hook returned invalid user prompt submit JSON output
-Stop hook (failed) — error: hook returned invalid stop hook JSON output
+hook returned invalid ... JSON output
+hook exited with code 1
 ```
 
-错误 JSON 内容被截断，通常表现为 `"Unterminated string in JSON at position XXX"`。
+错误 JSON 内容为乱码 `?` 字符，表现为 `"Unexpected token '?'"`，原因是 Windows Console 编码被其他进程（如 Semble MCP）全局切换为 GBK (936)，导致 UTF-8 数据损坏。
 
 ### 1.2 调用链路
 
@@ -76,6 +76,23 @@ TypeScript 的 `tsc`（无 `--watch` 模式）在某些场景下会跳过未被�
 
 **修复：** 删除 `dist` 目录后全量编译（`rm -rf dist && tsc`）。
 
+### 1.6 根因四：Windows Console 编码全局共享
+
+Windows 的 `Console.OutputEncoding` 和 `Console.InputEncoding` 是**全局进程共享**的。当 Semble MCP 等工具启动时，会将 Console 编码从 UTF-8 (65001) 切换为系统默认 GBK (936)，导致：
+- PowerShell shim 通过 `[Console]::Out.Write()` 输出的 UTF-8 JSON 被重新编码为 GBK，中文和特殊字符变成 `?`
+- 即使正确接收了 stdin，输出阶段仍然会损坏
+
+**修复：** 使用 `[Console]::OpenStandardOutput().Write()` 直接写原始 UTF-8 字节，完全绕过 `Console.OutputEncoding`。同时设置 `ProcessStartInfo.Standard*Encoding` 确保子进程的管道编码不受 Console 影响。
+
+### 1.7 根因五：PowerShell 5.1 vs 7.x 双路径复杂度
+
+最初为了兼容 `powershell.exe` (5.1) 和 `pwsh.exe` (7.x)，shim 包含条件判断（`$siHasEncoding`）和 BaseStream 回退路径。这导致：
+- shim 文件写入时换行符丢失，所有代码挤在一行
+- `#` 注释吃掉后续所有代码
+- 维护两套代码路径容易出错
+
+**决策：** 仅支持 pwsh 7.x（命令已使用 `pwsh`），移除所有 5.1 兼容代码。pwsh 7 基于 .NET Core，`StandardInputEncoding` 等属性始终可用。
+
 ---
 
 ## 2. 修复方案：Base64 封装 + OpenStandardInput
@@ -92,10 +109,22 @@ TypeScript 的 `tsc`（无 `--watch` 模式）在某些场景下会跳过未被�
 
 位于 `C:\Users\<user>\.codex\hooks\omx-native-hook-windows-shim.ps1`
 
+**核心策略：pwsh 7.x only，全程原始字节流，不依赖 Console 编码。**
+
 ```powershell
 $ErrorActionPreference = 'Stop'
 
-# 1. 从 StandardInput 读取原始字节
+# 0. 定义原始字节输出函数（绕过 Console.OutputEncoding）
+function WriteStdoutRaw { param([string]$s)
+  $b=[System.Text.Encoding]::UTF8.GetBytes($s)
+  [Console]::OpenStandardOutput().Write($b,0,$b.Length)
+}
+function WriteStderrRaw { param([string]$s)
+  $b=[System.Text.Encoding]::UTF8.GetBytes($s)
+  [Console]::OpenStandardError().Write($b,0,$b.Length)
+}
+
+# 1. 从 StandardInput 读取原始字节（绕过 Console.InputEncoding）
 $stdinStream = [Console]::OpenStandardInput()
 $memStream = New-Object System.IO.MemoryStream
 $buffer = New-Object byte[] 65536
@@ -104,16 +133,24 @@ while (($read = $stdinStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
 }
 $stdinPayload = [System.Text.Encoding]::UTF8.GetString($memStream.ToArray())
 
-# 2. Base64 编码后传给子进程
+# 2. 配置 ProcessStartInfo 编码（pwsh 7.x 始终支持）
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+$startInfo.StandardInputEncoding = $utf8NoBom
+$startInfo.StandardOutputEncoding = $utf8NoBom
+$startInfo.StandardErrorEncoding = $utf8NoBom
+
+# 3. Base64 编码后传给子进程（纯 ASCII，零风险）
 $utf8Bytes = [System.Text.Encoding]::UTF8.GetBytes($stdinPayload)
 $base64Payload = [Convert]::ToBase64String($utf8Bytes)
+$stdoutTask = $process.StandardOutput.ReadToEndAsync()
+$stderrTask = $process.StandardError.ReadToEndAsync()
 $process.StandardInput.WriteLine($base64Payload)
 $process.StandardInput.Close()
-
-# 3. 等待子进程完成并输出结果
 $process.WaitForExit()
-[Console]::Out.Write($stdoutTask.Result)
-[Console]::Error.Write($stderrTask.Result)
+
+# 4. 用原始字节输出（不受 Console.OutputEncoding 影响）
+WriteStdoutRaw $stdoutTask.Result
+if ($stderrTask.Result) { WriteStderrRaw $stderrTask.Result }
 exit $process.ExitCode
 ```
 
@@ -184,9 +221,10 @@ node scripts/verify-hook-integrity.cjs
 
 ### 3.4 注意事项
 
-- **必须完全退出 Codex**（关闭所有窗口/进程），然后重新启动
+- **必须完全退出 Codex / owx**（关闭所有窗口/进程），然后重新启动
+- owx sandbox 环境会自动从项目 `.codex/hooks/` 同步 shim，重启即可生效
 - 如果 `tsc` 仍有增量编译缓存，可手动删除 `dist` 目录：`rm -rf dist`
-- 验证脚本通过后，shim 文件应包含 `OpenStandardInput` 和 `ToBase64String`，dist 应包含 `Buffer.from(base64Data, "base64")`
+- 验证脚本通过后，shim 文件应包含 `OpenStandardInput`、`ToBase64String`、`WriteStdoutRaw`、`StandardInputEncoding = $utf8NoBom`，且不应包含 `$siHasEncoding`；dist 应包含 `Buffer.from(base64Data, "base64")`
 
 ---
 
@@ -198,11 +236,15 @@ node scripts/verify-hook-integrity.cjs
 node scripts/verify-hook-integrity.cjs
 ```
 
-输出示例：
+输出示例（8 项检查）：
 
 ```
   ✅ Shim — OpenStandardInput 原始字节读取
   ✅ Shim — ToBase64String 编码
+  ✅ Shim — pwsh 7.x 直接设置 Standard*Encoding (无条件)
+  ✅ Shim — WriteStdoutRaw 原始字节输出 (绕过Console编码)
+  ✅ Shim — 无 $siHasEncoding 旧版兼容 (pwsh 7.x only)
+  ✅ Shim — OpenStandardOutput 绕过编码写stdout
   ✅ Dist — Base64 → ASCII 解码
   ✅ Dist — Buffer.from(base64) 解码
 
@@ -238,20 +280,23 @@ hook 调试日志位于项目的 `.omx/logs/` 目录：
 
 ## 5. 技术细节与备选方案对比
 
-### 5.1 三种方案对比
+### 5.1 四种方案对比
 
 | 方案 | 复杂度 | 可靠性 | 性能 | 清理 | 大小限制 |
 |------|--------|--------|------|------|----------|
-| **Base64 + OpenStandardInput** ⭐ | 低 | 最高 | 好 | 无 | 无 |
+| **Base64 + OpenStandardInput + OpenStandardOutput** ⭐ | 低 | 最高 | 好 | 无 | 无 |
 | 临时文件 + 环境变量 | 中 | 高 | 一般 | 需要 | 无 |
 | `BaseStream.Write` 原始字节 | 低 | 中 | 最好 | 无 | 无 |
+| Console.Out + OutputEncoding 设置 | 低 | 低 | 最好 | 无 | 无 |
 
-### 5.2 Base64 方案的 Why
+### 5.2 当前方案的 Why
 
 1. **Base64 只包含安全 ASCII 字符**（`A-Za-z0-9+/=`），完全免疫所有管道编码、多字节截断和不可见字符问题
 2. **`OpenStandardInput()` 直接从文件描述符读取原始字节**，绕过 `Console.In` 的文本编码层
-3. **`WriteLine()` 追加换行符**帮助 Node.js 的 stream 读取完整一行
-4. 这是跨语言、跨平台 CLI 开发中的**标准做法**（如 SSH 密钥交换、Docker 镜像层传输等）
+3. **`OpenStandardOutput().Write()` 直接写原始字节**，绕过 `Console.OutputEncoding`（会被 Semble MCP 等工具全局切换为 GBK）
+4. **`ProcessStartInfo.Standard*Encoding` 设置为 UTF-8 no-BOM**，确保子进程管道不受系统编码影响
+5. **仅支持 pwsh 7.x**（命令已使用 `pwsh`），无需兼容 `powershell.exe` (5.1) 的缺失属性
+6. 这是跨语言、跨平台 CLI 开发中的**标准做法**（如 SSH 密钥交换、Docker 镜像层传输等）
 
 ### 5.3 备选方案说明
 
@@ -264,13 +309,21 @@ $env:OMX_NATIVE_HOOK_INPUT_FILE = $tempInputFile
 - 优点：没有管道编码问题
 - 缺点：磁盘 I/O 开销、需要 finally 清理临时文件、环境变量有大小限制（32KB）
 
-**原始 BaseStream.Write 方案**：
+**BaseStream 方案**（已弃用）：
 ```powershell
 $utf8Bytes = [System.Text.Encoding]::UTF8.GetBytes($stdinPayload)
 $process.StandardInput.BaseStream.Write($utf8Bytes, 0, $utf8Bytes.Length)
 ```
 - 优点：无额外开销
-- 缺点：不能解决 `Console.In` 读取阶段的编码损坏问题
+- 缺点：仅在 `powershell.exe` 5.1 中作为 `StandardInputEncoding` 不可用时的回退方案；pwsh 7.x 不需要
+
+**Console.Out + OutputEncoding 方案**（已弃用）：
+```powershell
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::Out.Write($result)
+```
+- 优点：代码简单
+- 缺点：`Console.OutputEncoding` 是全局共享的，会被其他进程（如 Semble MCP）随时覆盖为 GBK
 
 ---
 

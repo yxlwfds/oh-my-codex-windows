@@ -3866,7 +3866,7 @@ export function buildWindowsPromptCommand(
     "$ErrorActionPreference = 'Stop'",
     `& { ${invocation} }`,
   ].join("; ");
-  return `powershell.exe -NoLogo -NoExit -EncodedCommand ${encodePowerShellCommand(wrappedCommand)}`;
+  return `pwsh -NoLogo -NoExit -EncodedCommand ${encodePowerShellCommand(wrappedCommand)}`;
 }
 
 /**

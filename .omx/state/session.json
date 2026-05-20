@@ -1,8 +1,8 @@
 {
-  "session_id": "test-2",
-  "native_session_id": "test-2",
-  "started_at": "2026-05-15T10:19:01.088Z",
+  "session_id": "node-spawn-test",
+  "native_session_id": "node-spawn-test",
+  "started_at": "2026-05-20T05:58:10.762Z",
   "cwd": "D:\\code\\my\\oh-my-codex",
-  "pid": 52416,
+  "pid": 53524,
   "platform": "win32"
 }

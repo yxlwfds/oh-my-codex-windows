@@ -3262,19 +3262,47 @@ export function isCodexNativeHookMainModule(
 async function readStdinJson(): Promise<NativeHookCliReadResult> {
   // Base64 解码方案：PowerShell shim 将 JSON 以 Base64 传入 stdin，
   // 只包含 ASCII 安全字符，彻底免疫多字节截断和管道编码问题。
+  // 某些调用者（如 PreCompact/PostCompact）可能绕过 shim 直接发送 plain JSON，
+  // 因此需要同时兼容 base64 和 plain JSON 两种格式。
   let raw = "";
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
   }
   if (chunks.length > 0) {
-    const base64Data = Buffer.concat(chunks).toString("ascii").trim();
-    if (base64Data) {
+    const rawBuffer = Buffer.concat(chunks);
+    // hex dump 前 80 字节用于诊断编码问题
+    const hexPreview = rawBuffer.toString("hex").substring(0, 160);
+    const stdinHexLogPath = join(process.cwd(), ".omx", "logs", `native-hook-stdin-hex-${new Date().toISOString().split("T")[0]}.jsonl`);
+    await appendFile(stdinHexLogPath, JSON.stringify({
+      timestamp: new Date().toISOString(),
+      event: "stdin_raw_hex",
+      length: rawBuffer.length,
+      hex_first_80_bytes: hexPreview,
+    }) + "\n").catch(() => {});
+    const asciiText = rawBuffer.toString("ascii").trim();
+    if (asciiText) {
+      // 尝试 base64 解码（shim 路径）
+      let base64Decoded = "";
+      let base64Failed = false;
       try {
-        raw = Buffer.from(base64Data, "base64").toString("utf-8").trim();
+        base64Decoded = Buffer.from(asciiText, "base64").toString("utf-8").trim();
       } catch {
-        // Base64 解码失败时，尝试作为原始 JSON 直接使用
-        raw = base64Data;
+        base64Failed = true;
+      }
+      // 验证 base64 解码结果是否为合法 JSON；
+      // 若解码结果不是有效 JSON（说明输入是 plain JSON 而非 base64），回退到原始文本
+      if (!base64Failed && base64Decoded) {
+        try {
+          JSON.parse(base64Decoded);
+          raw = base64Decoded;
+        } catch {
+          // base64 解码产生了无效 JSON → 说明输入本身就是 plain JSON
+          raw = asciiText;
+        }
+      } else if (base64Failed) {
+        // Base64 解码本身失败，当作 plain JSON 使用
+        raw = asciiText;
       }
     }
   }
@@ -3358,6 +3386,16 @@ async function readStdinJson(): Promise<NativeHookCliReadResult> {
 function writeNativeHookJsonStdout(output: Record<string, unknown>): void {
   try {
     const jsonStr = JSON.stringify(output);
+    // 记录即将输出到 stdout 的内容（用于诊断 Codex 收到的内容）
+    appendFile(
+      join(process.cwd(), ".omx", "logs", `native-hook-stdout-${new Date().toISOString().split("T")[0]}.jsonl`),
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        event: "stdout_write",
+        length: jsonStr.length,
+        content: jsonStr.substring(0, 500),
+      }) + "\n",
+    ).catch(() => {});
     // 确保输出是纯 JSON，不包含任何额外字符
     process.stdout.write(`${jsonStr}\n`);
   } catch (error) {
@@ -3466,6 +3504,8 @@ export async function runCodexNativeHookCli(): Promise<void> {
     if (readHookEventName(payload) === "Stop") {
       writeNativeHookJsonStdout(buildStopDispatchFailureOutput(error));
     } else {
+      // Emit at least {} so Codex never sees empty stdout.
+      writeNativeHookJsonStdout({});
       process.exitCode = 1;
     }
   }

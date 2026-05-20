@@ -1,0 +1,1 @@
+{"hook_event_name":"SessionStart","session_id":"test-sess","cwd":"d:\\code\\my\\oh-my-codex","transcript_path":"C:\\Users\\yuhua\\.omx-runs\\run-20260520002433-aad0\\.omx\\runtime\\codex-home\\omx-1779236673416-qplwxq"}

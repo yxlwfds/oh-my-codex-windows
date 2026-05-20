@@ -177,8 +177,8 @@ describe('buildPlatformCommandSpec', () => {
     const goodPowerShellBin = await mkdtemp(join(tmpdir(), 'omx-platform-good-powershell-'));
     try {
       const ps1Path = join(shimBin, 'codex.ps1');
-      const powershellDirectory = join(badPowerShellBin, 'powershell');
-      const powershellExePath = join(goodPowerShellBin, 'powershell.exe');
+      const powershellDirectory = join(badPowerShellBin, 'pwsh');
+      const powershellExePath = join(goodPowerShellBin, 'pwsh.exe');
       await writeFile(ps1Path, '');
       await mkdir(powershellDirectory, { recursive: true });
       await writeFile(powershellExePath, '');

@@ -1,6 +1,8 @@
-import { createHash } from "crypto";
+﻿import { createHash } from "crypto";
+import { existsSync } from "fs";
 import { readdir, realpath } from "fs/promises";
 import { basename, dirname, join, relative, resolve, win32 } from "path";
+import { execFileSync } from "child_process";
 
 export const MANAGED_HOOK_EVENTS = [
   "SessionStart",
@@ -149,8 +151,43 @@ export function buildManagedCodexNativeHookWindowsShimContent(
     win32.join(pkgRoot, "dist", "scripts", "codex-native-hook.js");
   const nodePath = options.nodePath ?? process.execPath;
 
+  const rawOutputFallback = [
+    "# 通过 OpenStandardOutput 写原始字节，完全绕过 [Console]::Out 的编码（避免 GBK/UTF-8 乱码）",
+    "function WriteStdoutRaw { param([string]$s) $b=[System.Text.Encoding]::UTF8.GetBytes($s); [Console]::OpenStandardOutput().Write($b,0,$b.Length) }",
+    "function WriteStderrRaw { param([string]$s) $b=[System.Text.Encoding]::UTF8.GetBytes($s); [Console]::OpenStandardError().Write($b,0,$b.Length) }",
+  ];
+
+  const processStartEncodingSetup = [
+    "# pwsh 7.x (NET Core) 始终支持 Standard*Encoding",
+    "$utf8NoBom = New-Object System.Text.UTF8Encoding $false",
+    "$startInfo.StandardInputEncoding = $utf8NoBom",
+    "$startInfo.StandardOutputEncoding = $utf8NoBom",
+    "$startInfo.StandardErrorEncoding = $utf8NoBom",
+  ];
+
+  const managedStdioPass = [
+    "$utf8Bytes = [System.Text.Encoding]::UTF8.GetBytes($stdinPayload)",
+    "$base64Payload = [Convert]::ToBase64String($utf8Bytes)",
+    "# 使用 TextWriter 管道（ReadToEndAsync 异步读取，pwsh 7 原生支持）",
+    "$stdoutTask = $process.StandardOutput.ReadToEndAsync()",
+    "$stderrTask = $process.StandardError.ReadToEndAsync()",
+    "$process.StandardInput.WriteLine($base64Payload)",
+    "$process.StandardInput.Close()",
+    "$process.WaitForExit()",
+    "$stdoutResult = $stdoutTask.Result",
+    "$stderrResult = $stderrTask.Result",
+  ];
+
+  const managedConsoleOutput = [
+    "# 用 OpenStandardOutput 写原始字节，确保输出不受 Console.OutputEncoding 影响",
+    "WriteStdoutRaw $stdoutResult",
+    "if ($stderrResult) { WriteStderrRaw $stderrResult }",
+    "exit $process.ExitCode",
+  ];
+
   return [
     "$ErrorActionPreference = 'Stop'",
+    ...rawOutputFallback,
     "# 从 StandardInput 读取原始字节（非 Console.In），避免管道环境下的字符编码损坏",
     "$stdinStream = [Console]::OpenStandardInput()",
     "$memStream = New-Object System.IO.MemoryStream",
@@ -183,17 +220,19 @@ export function buildManagedCodexNativeHookWindowsShimContent(
     "$deadline = [DateTime]::UtcNow.AddMilliseconds($launchTimeoutMs)",
     "while (-not (Test-Path -LiteralPath $hookScript)) {",
     "  if ([DateTime]::UtcNow -ge $deadline) {",
-    "    [Console]::Out.WriteLine('{}')",
+    "    WriteStdoutRaw ('{}' + [Environment]::NewLine)",
     "    exit 0",
     "  }",
     "  Start-Sleep -Milliseconds 200",
     "}",
+
     "$startInfo = [System.Diagnostics.ProcessStartInfo]::new()",
     `$startInfo.FileName = ${quotePowerShellLiteral(nodePath)}`,
     "$startInfo.UseShellExecute = $false",
     "$startInfo.RedirectStandardInput = $true",
     "$startInfo.RedirectStandardOutput = $true",
     "$startInfo.RedirectStandardError = $true",
+    ...processStartEncodingSetup,
     `$startInfo.Arguments = ${quotePowerShellLiteral(quoteWindowsProcessArgument(hookScript))}`,
     "$process = [System.Diagnostics.Process]::new()",
     "$process.StartInfo = $startInfo",
@@ -203,25 +242,15 @@ export function buildManagedCodexNativeHookWindowsShimContent(
     "    break",
     "  } catch {",
     "    if ([DateTime]::UtcNow -ge $deadline) {",
-    "      [Console]::Out.WriteLine('{}')",
+    "      WriteStdoutRaw ('{}' + [Environment]::NewLine)",
     "      exit 0",
     "    }",
     "    Start-Sleep -Milliseconds 200",
     "    continue",
     "  }",
     "} while ($true)",
-    "$stdoutTask = $process.StandardOutput.ReadToEndAsync()",
-    "$stderrTask = $process.StandardError.ReadToEndAsync()",
-    "",
-    "# 通过 Base64 封装传递 JSON，完全避免跨平台编码和多字节截断问题",
-    "$utf8Bytes = [System.Text.Encoding]::UTF8.GetBytes($stdinPayload)",
-    "$base64Payload = [Convert]::ToBase64String($utf8Bytes)",
-    "$process.StandardInput.WriteLine($base64Payload)",
-    "$process.StandardInput.Close()",
-    "$process.WaitForExit()",
-    "[Console]::Out.Write($stdoutTask.Result)",
-    "[Console]::Error.Write($stderrTask.Result)",
-    "exit $process.ExitCode",
+    ...managedStdioPass,
+    ...managedConsoleOutput,
     "",
   ].join("\n");
 }
@@ -241,10 +270,102 @@ export function buildManagedCodexNativeHookCommand(
   if (platform === "win32") {
     const codexHomeDir = options.codexHomeDir ?? dirname(pkgRoot);
     const shimPath = buildManagedCodexNativeHookWindowsShimPath(codexHomeDir);
-    return `powershell.exe -NoProfile -ExecutionPolicy Bypass -File ${quoteWindowsCommandPart(shimPath)}`;
+    // 最佳实践：永远使用裸 'pwsh' 或 'powershell.exe' 裸名，依赖 PATH 解析。
+    // 这彻底避免了全路径中带有空格造成的 cmd.exe /C 引号剥离以及转移 Bug。
+    return `pwsh -NoProfile -ExecutionPolicy Bypass -File ${quoteWindowsCommandPart(shimPath)}`;
   }
 
   return `${quoteCommandPart(process.execPath)} ${quoteCommandPart(hookScript)}`;
+}
+
+/**
+ * 解析 pwsh 可执行文件路径，返回 **不含空格** 的路径以兼容 cmd.exe /C 引号剥离行为。
+ *
+ * Codex CLI (Rust) 通过 `cmd.exe /C <command>` 启动 hook，
+ * 而 cmd.exe /C 会剥离首尾引号，导致 "D:\Program Files\...\pwsh.exe" 被截断为 D:\Program。
+ * 因此：
+ *   1. 解析全路径后，若路径包含空格则转为 8.3 短路径（不含空格、不需引号）
+ *   2. 若短路径不可用，回退到裸名 "pwsh"（依赖 PATH）
+ */
+function resolvePwshPath(): string {
+  // 常见安装路径
+  const candidates = [
+    join(process.env.ProgramFiles ?? "C:\\Program Files", "PowerShell", "7", "pwsh.exe"),
+    "D:\\Program Files\\PowerShell\\7\\pwsh.exe",
+  ];
+  const drive = (process.env.SystemDrive ?? "").toUpperCase();
+  if (drive === "C:") {
+    if (!candidates.includes("D:\\Program Files\\PowerShell\\7\\pwsh.exe")) {
+      candidates.push("D:\\Program Files\\PowerShell\\7\\pwsh.exe");
+    }
+  }
+
+  let resolvedLong: string | null = null;
+
+  // 尝试通过 where.exe 查找，并屏蔽 stderr 噪音
+  try {
+    const whereResult = execFileSync("where.exe", ["pwsh.exe"], {
+      encoding: "utf-8",
+      timeout: 5000,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (whereResult) {
+      const firstMatch = whereResult.split(/[\r\n]+/)[0]?.trim();
+      if (firstMatch && existsSync(firstMatch)) {
+        resolvedLong = firstMatch;
+      }
+    }
+  } catch {
+    // where.exe 可能不可用
+  }
+
+  // 检查候选路径
+  if (!resolvedLong) {
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) {
+        resolvedLong = candidate;
+        break;
+      }
+    }
+  }
+
+  if (!resolvedLong) {
+    return "pwsh";
+  }
+
+  // 路径无空格 → 直接使用
+  if (!resolvedLong.includes(" ")) {
+    return resolvedLong;
+  }
+
+  // 路径有空格 → 转为 8.3 短路径（cmd.exe /C 安全）
+  const shortPath = resolveWindows83ShortPath(resolvedLong);
+  if (shortPath) {
+    return shortPath;
+  }
+
+  // 短路径不可用 → 裸名回退（依赖 PATH）
+  return "pwsh";
+}
+
+/**
+ * 将 Windows 长路径转为 8.3 短路径（不含空格），用于绕过 cmd.exe /C 引号剥离问题。
+ */
+function resolveWindows83ShortPath(longPath: string): string | null {
+  try {
+    const result = execFileSync(
+      "cmd.exe",
+      ["/d", "/c", `for %I in ("${longPath}") do @echo %~sI`],
+      { encoding: "utf-8", timeout: 5000, windowsHide: true },
+    ).trim();
+    if (result && !result.includes(" ") && existsSync(result)) {
+      return result;
+    }
+  } catch {
+    // 8.3 短路径可能被禁用
+  }
+  return null;
 }
 
 function buildCommandHook(

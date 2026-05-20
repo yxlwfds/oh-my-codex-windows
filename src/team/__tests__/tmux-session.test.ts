@@ -1548,7 +1548,7 @@ describe('buildWorkerStartupCommand', () => {
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
     try {
       const codexPs1Path = join(fakeBin, 'codex.ps1');
-      const powershellExePath = join(fakeBin, 'powershell.exe');
+      const powershellExePath = join(fakeBin, 'pwsh.exe');
       await writeFile(codexPs1Path, '');
       await writeFile(powershellExePath, '');
 
@@ -1607,8 +1607,8 @@ describe('buildWorkerStartupCommand', () => {
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
     try {
       const codexPs1Path = join(fakeBin, 'codex.ps1');
-      const pathPowerShellExe = join(fakeBin, 'powershell.exe');
-      const windowsPowerShellExe = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+      const pathPowerShellExe = join(fakeBin, 'pwsh.exe');
+      const windowsPowerShellExe = 'C:\\Program Files\\PowerShell\\7\\pwsh.exe';
       await writeFile(codexPs1Path, '');
       await writeFile(pathPowerShellExe, '');
 
@@ -1617,9 +1617,9 @@ describe('buildWorkerStartupCommand', () => {
         || candidate === pathPowerShellExe
         || candidate === codexPs1Path,
       () => buildWorkerStartupCommand('alpha', 1, ['--model', 'gpt-5'], 'C:\\repo'));
-      const prefix = `${windowsPowerShellExe} -NoLogo -NoProfile -ExecutionPolicy Bypass -EncodedCommand `;
+      const prefix = `${pathPowerShellExe} -NoLogo -NoProfile -ExecutionPolicy Bypass -EncodedCommand `;
       assert.ok(cmd.startsWith(prefix), cmd);
-      assert.ok(!cmd.startsWith(`${pathPowerShellExe} `), cmd);
+      assert.ok(!cmd.startsWith(`${windowsPowerShellExe} `), cmd);
     } finally {
       if (origPlatform) Object.defineProperty(process, 'platform', origPlatform);
       if (typeof prevPath === 'string') process.env.PATH = prevPath;

@@ -22,6 +22,27 @@ const checks = [
     grep: "ToBase64String",
   },
   {
+    label: "Shim — pwsh 7.x 直接设置 Standard*Encoding (无条件)",
+    path: SHIM_PATH,
+    grep: "StandardInputEncoding = $utf8NoBom",
+  },
+  {
+    label: "Shim — WriteStdoutRaw 原始字节输出 (绕过Console编码)",
+    path: SHIM_PATH,
+    grep: "WriteStdoutRaw",
+  },
+  {
+    label: "Shim — 无 $siHasEncoding 旧版兼容 (pwsh 7.x only)",
+    path: SHIM_PATH,
+    grep: "$siHasEncoding",
+    not: true,
+  },
+  {
+    label: "Shim — OpenStandardOutput 绕过编码写stdout",
+    path: SHIM_PATH,
+    grep: "OpenStandardOutput().Write",
+  },
+  {
     label: "Dist — Base64 → ASCII 解码",
     path: DIST_PATH,
     grep: 'toString("ascii")',
@@ -29,18 +50,25 @@ const checks = [
   {
     label: "Dist — Buffer.from(base64) 解码",
     path: DIST_PATH,
-    grep: 'Buffer.from(base64Data, "base64")',
+    grep: 'Buffer.from(asciiText, "base64")',
+  },
+  {
+    label: "Dist — JSON.parse 验证 base64 解码结果 (plain JSON 回退)",
+    path: DIST_PATH,
+    grep: 'JSON.parse(base64Decoded)',
   },
 ];
 
 let allOk = true;
-for (const { label, path: filePath, grep } of checks) {
+for (const { label, path: filePath, grep, not } of checks) {
   try {
     const content = fs.readFileSync(filePath, "utf-8");
-    if (content.includes(grep)) {
+    const found = content.includes(grep);
+    const ok = not ? !found : found;
+    if (ok) {
       console.log(`  ✅ ${label}`);
     } else {
-      console.log(`  ❌ ${label} — 缺少: ${grep}`);
+      console.log(`  ❌ ${label} — ${not ? '不应存在: ' : '缺少: '}${grep}`);
       allOk = false;
     }
   } catch (e) {

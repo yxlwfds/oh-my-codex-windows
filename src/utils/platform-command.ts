@@ -180,7 +180,7 @@ function buildCmdLaunch(commandPath: string, args: string[], env: NodeJS.Process
 }
 
 function resolvePowerShellExecutable(env: NodeJS.ProcessEnv, existsImpl: ExistsSyncLike): string {
-  return resolveWindowsCommandPath('powershell', env, existsImpl) || 'powershell.exe';
+  return resolveWindowsCommandPath('pwsh', env, existsImpl) || 'pwsh.exe';
 }
 
 function shouldUseWindowsVerbatimArguments(platform: NodeJS.Platform, spec: PlatformCommandSpec): boolean {

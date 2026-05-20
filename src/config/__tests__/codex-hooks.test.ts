@@ -27,7 +27,10 @@ describe("codex hooks helpers", () => {
     const command = (config.hooks.SessionStart[0] as { hooks?: Array<{ command?: string }> } | undefined)?.hooks?.[0]?.command;
 
     if (process.platform === "win32") {
-      assert.equal(command, 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "\\hooks\\omx-native-hook-windows-shim.ps1"');
+      assert.match(
+        command ?? "",
+        /^[^\s"]+ -NoProfile -ExecutionPolicy Bypass -File "\\hooks\\omx-native-hook-windows-shim\.ps1"$/,
+      );
       assert.doesNotMatch(command ?? "", /codex-native-hook\.js/);
     } else {
       assert.equal(
@@ -63,9 +66,9 @@ describe("codex hooks helpers", () => {
       hooks?: Array<{ command?: string }>;
     } | undefined)?.hooks?.[0]?.command;
 
-    assert.equal(
-      command,
-      'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\\Users\\Ada Lovelace\\.codex\\hooks\\omx-native-hook-windows-shim.ps1"',
+    assert.match(
+      command ?? "",
+      /^[^\s"]+ -NoProfile -ExecutionPolicy Bypass -File "C:\\Users\\Ada Lovelace\\.codex\\hooks\\omx-native-hook-windows-shim.ps1"$/,
     );
     assert.doesNotMatch(command ?? "", /codex-native-hook\.js/);
   });
@@ -94,9 +97,11 @@ describe("codex hooks helpers", () => {
       .map((hook) => hook.command);
 
     assert.ok(commands.includes("echo keep-me"));
-    assert.ok(commands.includes(
-      'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\\Users\\Ada Lovelace\\.codex\\hooks\\omx-native-hook-windows-shim.ps1"',
-    ));
+    const managed = commands.find((cmd) => cmd?.includes("omx-native-hook-windows-shim.ps1"));
+    assert.match(
+      managed ?? "",
+      /^[^\s"]+ -NoProfile -ExecutionPolicy Bypass -File "C:\\Users\\Ada Lovelace\\.codex\\hooks\\omx-native-hook-windows-shim.ps1"$/,
+    );
   });
 
   it("builds deterministic Windows shim paths and PowerShell 5.1-compatible ProcessStartInfo content", () => {
@@ -110,7 +115,7 @@ describe("codex hooks helpers", () => {
       { nodePath: "C:\\Program Files\\nodejs\\node.exe" },
     );
 
-    assert.match(content, /\$stdinPayload = \[Console\]::In\.ReadToEnd\(\)/);
+    assert.match(content, /OpenStandardInput/);
     assert.match(content, /\[System\.Diagnostics\.ProcessStartInfo\]::new\(\)/);
     assert.doesNotMatch(content, /ArgumentList/);
     assert.match(content, /\$startInfo\.UseShellExecute = \$false/);
@@ -121,9 +126,9 @@ describe("codex hooks helpers", () => {
     assert.match(content, /\$launchTimeoutMs = 15000/);
     assert.match(content, /Test-Path -LiteralPath \$hookScript/);
     assert.match(content, /Start-Sleep -Milliseconds 200/);
-    assert.match(content, /\[Console\]::Out\.WriteLine\('\{\}'\)/);
-    assert.match(content, /\[Console\]::Out\.Write\(\$stdoutTask\.Result\)/);
-    assert.match(content, /\[Console\]::Error\.Write\(\$stderrTask\.Result\)/);
+    assert.match(content, /WriteStdoutRaw/);
+    assert.match(content, /WriteStdoutRaw \$stdoutResult/);
+    assert.match(content, /if \(\$stderrResult\) \{ WriteStderrRaw \$stderrResult \}/);
     assert.match(content, /exit \$process\.ExitCode/);
     assert.match(content, /\$startInfo\.FileName = 'C:\\Program Files\\nodejs\\node\.exe'/);
     assert.match(
@@ -134,10 +139,16 @@ describe("codex hooks helpers", () => {
 
   it("forwards payload, stdout, stderr, and non-zero exit through the Windows shim when PowerShell is available", async () => {
     const shell = ["pwsh", "powershell.exe", "powershell"].find((candidate) => {
-      const probe = spawnSync(candidate, ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"], {
+      const probe = spawnSync(candidate, ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.Major"], {
         encoding: "utf-8",
       });
-      return !probe.error && probe.status === 0;
+      // 我们的 ProcessStartInfo 强依赖 PowerShell Core 7.x 的高级特性（如 StandardInputEncoding/StandardOutputEncoding 赋值、ReadToEndAsync 等），
+      // 故测试只针对 pwsh (v6+) 运行，对旧版 Windows PowerShell 5.1 优雅跳过。
+      if (!probe.error && probe.status === 0) {
+        const major = parseInt(probe.stdout.trim(), 10);
+        return major >= 6;
+      }
+      return false;
     });
     if (!shell) return;
 
@@ -185,10 +196,14 @@ describe("codex hooks helpers", () => {
 
   it("falls back to parseable no-op JSON when the Windows shim cannot find the built hook script", async () => {
     const shell = ["pwsh", "powershell.exe", "powershell"].find((candidate) => {
-      const probe = spawnSync(candidate, ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"], {
+      const probe = spawnSync(candidate, ["-NoProfile", "-Command", "$PSVersionTable.PSVersion.Major"], {
         encoding: "utf-8",
       });
-      return !probe.error && probe.status === 0;
+      if (!probe.error && probe.status === 0) {
+        const major = parseInt(probe.stdout.trim(), 10);
+        return major >= 6;
+      }
+      return false;
     });
     if (!shell) return;
 
@@ -284,9 +299,7 @@ describe("codex hooks helpers", () => {
 
   it("matches Codex's normalized command hook hash identity", async () => {
     const state = buildManagedCodexHookTrustState("/hooks.json", "/repo");
-    const command = process.platform === "win32"
-      ? 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "\\hooks\\omx-native-hook-windows-shim.ps1"'
-      : `"${process.execPath.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}" "/repo/dist/scripts/codex-native-hook.js"`;
+    const command = buildManagedCodexNativeHookCommand("/repo", { platform: "win32", codexHomeDir: "/" });
     const expectedIdentity = {
       event_name: "pre_tool_use",
       hooks: [

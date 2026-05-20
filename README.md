@@ -15,6 +15,8 @@
 
 **Docs:** [Getting Started](./docs/getting-started.html) · [Agents](./docs/agents.html) · [Skills](./docs/skills.html) · [Integrations](./docs/integrations.html) · [Demo](./DEMO.md) · [OpenClaw guide](./docs/openclaw-integration.md)
 
+**Toolchain:** [ast-grep + Semble](./docs/code-intelligence/README.md) · [ast-grep sync](./docs/ast-grep-sync-one-command.md)
+
 **Community:** [Discord](https://discord.gg/PUwSMR9XNk) — shared OMX/community server for oh-my-codex and related tooling.
 
 OMX is a workflow layer for [OpenAI Codex CLI](https://github.com/openai/codex).

@@ -114,6 +114,66 @@
           "turn_count": 1
         }
       }
+    },
+    "omx-1779247845974-qfxx42": {
+      "session_id": "omx-1779247845974-qfxx42",
+      "leader_thread_id": "019e436f-aee0-70d0-9e76-aeb34e17fb03",
+      "updated_at": "2026-05-20T03:31:45.635Z",
+      "threads": {
+        "019e436f-aee0-70d0-9e76-aeb34e17fb03": {
+          "thread_id": "019e436f-aee0-70d0-9e76-aeb34e17fb03",
+          "kind": "leader",
+          "first_seen_at": "2026-05-20T03:31:45.635Z",
+          "last_seen_at": "2026-05-20T03:31:45.635Z",
+          "last_turn_id": "019e4370-6a56-7b03-898a-f027c0b6a725",
+          "turn_count": 1
+        }
+      }
+    },
+    "omx-1779247993115-ecr3v3": {
+      "session_id": "omx-1779247993115-ecr3v3",
+      "leader_thread_id": "019e4371-e5f2-7d20-9202-018daad4d03d",
+      "updated_at": "2026-05-20T03:33:49.231Z",
+      "threads": {
+        "019e4371-e5f2-7d20-9202-018daad4d03d": {
+          "thread_id": "019e4371-e5f2-7d20-9202-018daad4d03d",
+          "kind": "leader",
+          "first_seen_at": "2026-05-20T03:33:49.231Z",
+          "last_seen_at": "2026-05-20T03:33:49.231Z",
+          "last_turn_id": "019e4372-4d35-7dd0-835e-39b71aafe0f4",
+          "turn_count": 1
+        }
+      }
+    },
+    "omx-1779249583981-o7k6p0": {
+      "session_id": "omx-1779249583981-o7k6p0",
+      "leader_thread_id": "019e438a-2921-76c2-9875-229009dd8a11",
+      "updated_at": "2026-05-20T04:02:51.342Z",
+      "threads": {
+        "019e438a-2921-76c2-9875-229009dd8a11": {
+          "thread_id": "019e438a-2921-76c2-9875-229009dd8a11",
+          "kind": "leader",
+          "first_seen_at": "2026-05-20T04:02:51.342Z",
+          "last_seen_at": "2026-05-20T04:02:51.342Z",
+          "last_turn_id": "019e438c-df2c-7171-a1ad-4771a6981203",
+          "turn_count": 1
+        }
+      }
+    },
+    "omx-1779253315059-lrhjy2": {
+      "session_id": "omx-1779253315059-lrhjy2",
+      "leader_thread_id": "019e43c3-1c59-7be0-8dae-026f4b6c03de",
+      "updated_at": "2026-05-20T05:03:43.635Z",
+      "threads": {
+        "019e43c3-1c59-7be0-8dae-026f4b6c03de": {
+          "thread_id": "019e43c3-1c59-7be0-8dae-026f4b6c03de",
+          "kind": "leader",
+          "first_seen_at": "2026-05-20T05:03:43.635Z",
+          "last_seen_at": "2026-05-20T05:03:43.635Z",
+          "last_turn_id": "019e43c4-9c7d-7c41-85d9-16bfc792ddf5",
+          "turn_count": 1
+        }
+      }
     }
   }
 }
