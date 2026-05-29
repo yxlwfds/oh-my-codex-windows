@@ -61,12 +61,12 @@ Keep runtime marker contracts stable and non-destructive when overlays are appli
 - For cleanup/refactor/deslop work, write a cleanup plan and lock behavior with regression tests before editing when coverage is missing.
 - Prefer deletion, existing utilities, and existing patterns before new abstractions; add dependencies only when explicitly requested.
 - When editing `AGENTS.md` or any template that generates it, preserve meaningful existing content unless the new text is an explicit replacement; prefer additive refinement over deletion.
-- When the code-intelligence toolchain is available, prefer `ast-grep` for syntax-aware search/rewrite and `semble` for semantic search/indexing before plain text search.
+- When the code-intelligence toolchain is available, default to Windsurf's built-in Fast Context (LSP/grep) for quick codebase traversal and symbol lookup first. Upgrade to `ast-grep` for syntax-aware rewrite/structural search or `semble_rs` (Rust-optimized semantic search at `D:\code\my\semble_rs\target\release\semble_rs.exe`) for complex or abstract semantic searches when built-in methods are insufficient.
 - Code search workflow:
-  - Start with `semble search` to find code by behavior, symbol name, or intent.
+  - Start with built-in Fast Context (LSP/grep) to resolve explicit symbols, exact file paths, or short queries.
+  - For abstract or natural-language behavior/intent queries, upgrade to `semble_rs search` (or `D:\code\my\semble_rs\target\release\semble_rs.exe search`).
   - Inspect full files only when the returned chunk is not enough context.
-  - Optionally use `semble find-related` with a promising result's `file_path` and `line` to find related implementations.
-  - Use grep only for exhaustive literal matches or quick confirmation of an exact string.
+  - Optionally use `semble_rs find-related` (or `D:\code\my\semble_rs\target\release\semble_rs.exe find-related`) with a promising result's `file_path` and `line` to find related implementations.
 - Keep diffs small, reviewable, and reversible.
 - Verify with lint, typecheck, tests, and static analysis after changes; final reports include changed files, simplifications, and remaining risks.
 - **Build-deploy rule**: any change to `src/config/codex-hooks.ts` (PowerShell shim generation), `src/scripts/codex-native-hook.ts` (Node hook stdin/stdout), or `scripts/verify-hook-integrity.cjs` (integrity checks) MUST be followed by `npm run build:deploy`, which rebuilds dist, force-deploys the latest shim to `./.codex/hooks/omx-native-hook-windows-shim.ps1`, and runs 7 integrity checks (OpenStandardInput, ToBase64String, StandardInputEncoding, StandardOutputEncoding, StandardErrorEncoding, Base64 decode, Buffer.from). Do NOT manually copy the shim after such changes; run the full pipeline.
@@ -389,3 +389,16 @@ Do not manually duplicate hook-owned activation state unless recovering from mis
 ## Setup
 
 Execute `owx setup` to install all components. Execute `owx doctor` to verify installation.
+
+## code-intelligence toolchain
+
+- `ast-grep`: use `sg` / `ast-grep` for syntax-aware search and rewrite.
+- `semble_rs`: use `semble_rs search` and `semble_rs find-related` for semantic code search. Command is `semble_rs` or absolute path `D:\code\my\semble_rs\target\release\semble_rs.exe`.
+  - **Fast Context Dual-Track Router**:
+    - **Fast Track (LSP/grep)**: **Default First Priority**. Always attempt to locate code symbols, exact file names, or short queries (< 30 chars) using the IDE's built-in LSP, grep, or fast context first.
+    - **Semantic Track (semble_rs)**: For abstract natural language, fuzzy intent, or complex logical queries where Fast Track fails or is insufficient, upgrade to the `semble_rs` command with `--use-sketches` (e.g., `semble_rs search "YOUR_QUERY" . --use-sketches`). It utilizes LLM signature translation and RRF multi-way fusion, automatically ignoring noise via the similarity cutoff (`MIN_SEMANTIC_SIMILARITY: 0.25`).
+- When editing `AGENTS.md` or any template that generates it, preserve meaningful existing content unless this entry is explicitly replacing that section.
+
+Public docs:
+- `D:\code\my\oh-my-codex\docs\ast-grep\README.md`
+- `D:\code\my\oh-my-codex\docs\semble\README.md`

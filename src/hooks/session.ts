@@ -63,6 +63,27 @@ async function removeDeadSessionHudState(
 }
 
 /**
+ * Remove the entire session-scoped state directory for a stale session id.
+ * This prevents stale triage state, ralph state, and other per-session files
+ * from leaking into subsequent sessions after a crash or forced restart.
+ */
+async function cleanupStaleSessionStateDir(
+  cwd: string,
+  staleSessionId: string,
+): Promise<void> {
+  if (!staleSessionId || !SESSION_ID_PATTERN.test(staleSessionId)) return;
+
+  try {
+    // getStateFilePath('dummy', cwd, staleSessionId) resolves to
+    // <stateDir>/sessions/<staleSessionId>/dummy. Remove the parent directory.
+    const staleDir = dirname(getStateFilePath('dummy', cwd, staleSessionId));
+    await rm(staleDir, { recursive: true, force: true });
+  } catch {
+    // best effort — do not block session creation on cleanup failure
+  }
+}
+
+/**
  * Reset session-scoped HUD/metrics files at launch so stale values do not leak
  * into a new Codex session.
  */
@@ -161,6 +182,8 @@ interface SessionStartOptions {
   platform?: NodeJS.Platform;
   nativeSessionId?: string;
   tmuxSessionName?: string;
+  /** If set, the stale session-scoped state directory for this id will be removed after write. */
+  staleSessionId?: string;
 }
 
 function defaultIsPidAlive(pid: number): boolean {
@@ -312,6 +335,12 @@ export async function writeSessionStart(
     pid,
     timestamp: state.started_at,
   });
+
+  // Clean up stale session-scoped state directory so it never leaks into the new session.
+  if (options.staleSessionId) {
+    void cleanupStaleSessionStateDir(cwd, options.staleSessionId);
+  }
+
   return state;
 }
 
@@ -326,13 +355,24 @@ export async function reconcileNativeSessionStart(
   nativeSessionId: string,
   options: SessionStartOptions = {},
 ): Promise<SessionState> {
-  const existing = await readUsableSessionState(cwd, {
+  const staleCheckOptions = {
     ...(options.platform ? { platform: options.platform } : {}),
-  });
+  };
+  const existing = await readUsableSessionState(cwd, staleCheckOptions);
+
+  // Detect a stale session that was rejected by readability checks:
+  // its PID is dead or its identity no longer matches.
+  const rawSession = existing ? null : await readSessionState(cwd);
+  const staleSessionId =
+    rawSession && !isSessionStateUsable(rawSession, cwd, staleCheckOptions)
+      ? rawSession.session_id
+      : undefined;
+
   if (!existing) {
     return await writeSessionStart(cwd, nativeSessionId, {
       ...options,
       nativeSessionId,
+      staleSessionId: options.staleSessionId ?? staleSessionId,
     });
   }
 
@@ -343,6 +383,7 @@ export async function reconcileNativeSessionStart(
     return await writeSessionStart(cwd, nativeSessionId, {
       ...options,
       nativeSessionId,
+      staleSessionId: options.staleSessionId ?? staleSessionId,
     });
   }
 

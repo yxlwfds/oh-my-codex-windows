@@ -175,148 +175,81 @@ def ensure_windsurf_global_rules(*, dry_run: bool) -> list[Path]:
     return written
 
 
-def update_toml_mcp_server(config_path: Path, server_name: str, *, dry_run: bool) -> Path:
-    desired_block = [
-        f"[mcp_servers.{server_name}]",
-        f'command = "{SEMBLE_MCP_COMMAND[0]}"',
-        f'args = {json.dumps(SEMBLE_MCP_COMMAND[1:])}',
-        "",
-    ]
-
-    lines = read_text(config_path).splitlines() if config_path.exists() else []
+def remove_toml_mcp_server(config_path: Path, server_name: str, *, dry_run: bool) -> Path:
+    if not config_path.exists():
+        return config_path
+    lines = read_text(config_path).splitlines()
     header = f"[mcp_servers.{server_name}]"
     start = next((idx for idx, line in enumerate(lines) if line.strip() == header), None)
-
     if start is None:
-        if lines and lines[-1].strip():
-            lines.append("")
-        new_lines = lines + desired_block
-    else:
-        end = start + 1
-        while end < len(lines) and not lines[end].startswith("["):
-            end += 1
-        new_lines = lines[:start] + desired_block[:-1] + lines[end:]
+        return config_path
 
+    end = start + 1
+    while end < len(lines) and not lines[end].startswith("["):
+        end += 1
+
+    new_lines = lines[:start] + lines[end:]
     new_text = "\n".join(new_lines).rstrip() + "\n"
     if dry_run:
-        print(f"[dry-run] update {config_path} with TOML MCP server {server_name}")
+        print(f"[dry-run] remove from {config_path} TOML MCP server {server_name}")
     else:
         write_text(config_path, new_text)
     return config_path
 
 
-def update_json_mcp_server(config_path: Path, server_name: str, payload: dict[str, object], *, dry_run: bool) -> Path:
-    if config_path.exists():
-        try:
-            data = json.loads(read_text(config_path))
-        except json.JSONDecodeError:
-            data = {}
-    else:
-        data = {}
+def remove_json_mcp_server(config_path: Path, server_name: str, *, dry_run: bool) -> Path:
+    if not config_path.exists():
+        return config_path
+    try:
+        data = json.loads(read_text(config_path))
+    except json.JSONDecodeError:
+        return config_path
 
     if not isinstance(data, dict):
-        data = {}
+        return config_path
 
     mcp_servers = data.get("mcpServers")
-    if not isinstance(mcp_servers, dict):
-        mcp_servers = {}
-    data["mcpServers"] = mcp_servers
-    mcp_servers[server_name] = payload
-
-    if dry_run:
-        print(f"[dry-run] update {config_path} with MCP server {server_name}")
-    else:
-        write_json(config_path, data)
+    if isinstance(mcp_servers, dict) and server_name in mcp_servers:
+        del mcp_servers[server_name]
+        if dry_run:
+            print(f"[dry-run] remove from {config_path} MCP server {server_name}")
+        else:
+            write_json(config_path, data)
     return config_path
 
 
-def install_codex_mcp(*, dry_run: bool) -> Path:
-    if dry_run:
-        print(f"[dry-run] ensure codex MCP server {SEMBLE_MCP_NAME}")
-        return codex_home() / "config.toml"
-
-    if command_exists("codex"):
-        result = run_windows_command(f"codex mcp get {SEMBLE_MCP_NAME}", dry_run=dry_run)
-        if result.returncode != 0:
-            run_windows_command(
-                'codex mcp add semble -- uvx --from "semble[mcp]" semble',
-                dry_run=dry_run,
-            )
-        return codex_home() / "config.toml"
-
+def remove_codex_mcp(*, dry_run: bool) -> Path:
+    if not dry_run and command_exists("codex"):
+        run_windows_command(f"codex mcp remove {SEMBLE_MCP_NAME}", dry_run=dry_run)
     config_path = codex_home() / "config.toml"
-    ensure_dir(config_path.parent)
-    return update_toml_mcp_server(config_path, SEMBLE_MCP_NAME, dry_run=dry_run)
+    return remove_toml_mcp_server(config_path, SEMBLE_MCP_NAME, dry_run=dry_run)
 
 
-def install_windsurf_mcp(*, dry_run: bool) -> list[Path]:
+def remove_windsurf_mcp(*, dry_run: bool) -> list[Path]:
     written: list[Path] = []
-    payload = {
-        "command": SEMBLE_MCP_COMMAND[0],
-        "args": SEMBLE_MCP_COMMAND[1:],
-        "disabled": False,
-    }
     for root in [codeium_home() / "windsurf", codeium_home() / "windsurf-next"]:
         config_path = root / "mcp_config.json"
-        written.append(update_json_mcp_server(config_path, SEMBLE_MCP_NAME, payload, dry_run=dry_run))
+        written.append(remove_json_mcp_server(config_path, SEMBLE_MCP_NAME, dry_run=dry_run))
     return written
 
 
-def install_qoder_user_mcp(*, dry_run: bool) -> Path:
-    if dry_run:
-        print(f"[dry-run] ensure qoder MCP server {SEMBLE_MCP_NAME} (scope=user)")
-        return qoder_home() / ".qoder.json"
-
-    if command_exists("qodercli"):
-        result = run_windows_command(
-            f"qodercli mcp get {SEMBLE_MCP_NAME} -s user",
-            dry_run=dry_run,
-        )
-        if result.returncode != 0:
-            run_windows_command(
-                f'qodercli mcp add {SEMBLE_MCP_NAME} uvx --from "semble[mcp]" semble -s user -t stdio',
-                dry_run=dry_run,
-            )
-        return qoder_home() / ".qoder.json"
-
-    payload = {
-        "command": SEMBLE_MCP_COMMAND[0],
-        "args": SEMBLE_MCP_COMMAND[1:],
-        "type": "stdio",
-    }
-    return update_json_mcp_server(qoder_home() / ".qoder.json", SEMBLE_MCP_NAME, payload, dry_run=dry_run)
+def remove_qoder_user_mcp(*, dry_run: bool) -> Path:
+    if not dry_run and command_exists("qodercli"):
+        run_windows_command(f"qodercli mcp remove {SEMBLE_MCP_NAME} -s user", dry_run=dry_run)
+    return remove_json_mcp_server(qoder_home() / ".qoder.json", SEMBLE_MCP_NAME, dry_run=dry_run)
 
 
-def install_qoder_project_mcp(project_root: Path, *, dry_run: bool) -> Path:
-    if dry_run:
-        print(f"[dry-run] ensure qoder MCP server {SEMBLE_MCP_NAME} (scope=project)")
-        return project_root / ".mcp.json"
-
-    if command_exists("qodercli"):
-        result = run_windows_command(
-            f"qodercli mcp get {SEMBLE_MCP_NAME} -s project -w {project_root}",
-            dry_run=dry_run,
-        )
-        if result.returncode != 0:
-            run_windows_command(
-                f'qodercli mcp add {SEMBLE_MCP_NAME} uvx --from "semble[mcp]" semble -s project -t stdio -w {project_root}',
-                dry_run=dry_run,
-            )
-        return project_root / ".mcp.json"
-
-    payload = {
-        "command": SEMBLE_MCP_COMMAND[0],
-        "args": SEMBLE_MCP_COMMAND[1:],
-        "type": "stdio",
-    }
-    return update_json_mcp_server(project_root / ".mcp.json", SEMBLE_MCP_NAME, payload, dry_run=dry_run)
+def remove_qoder_project_mcp(project_root: Path, *, dry_run: bool) -> Path:
+    if not dry_run and command_exists("qodercli"):
+        run_windows_command(f"qodercli mcp remove {SEMBLE_MCP_NAME} -s project -w {project_root}", dry_run=dry_run)
+    return remove_json_mcp_server(project_root / ".mcp.json", SEMBLE_MCP_NAME, dry_run=dry_run)
 
 
 def install_project(project_root: Path, *, dry_run: bool) -> None:
     ensure_project_agents_entry(project_root, dry_run=dry_run)
     install_skill(AST_GREP_SKILL_NAME, AST_GREP_SKILL_TEMPLATE, project_skill_roots(project_root), dry_run=dry_run)
     install_skill(SEMBLE_SKILL_NAME, SEMBLE_SKILL_TEMPLATE, project_skill_roots(project_root), dry_run=dry_run)
-    install_qoder_project_mcp(project_root, dry_run=dry_run)
+    remove_qoder_project_mcp(project_root, dry_run=dry_run)
 
 
 def install_global(*, dry_run: bool) -> None:
@@ -325,9 +258,9 @@ def install_global(*, dry_run: bool) -> None:
     ensure_windsurf_global_rules(dry_run=dry_run)
     install_skill(AST_GREP_SKILL_NAME, AST_GREP_SKILL_TEMPLATE, global_skill_roots(), dry_run=dry_run)
     install_skill(SEMBLE_SKILL_NAME, SEMBLE_SKILL_TEMPLATE, global_skill_roots(), dry_run=dry_run)
-    install_codex_mcp(dry_run=dry_run)
-    install_windsurf_mcp(dry_run=dry_run)
-    install_qoder_user_mcp(dry_run=dry_run)
+    remove_codex_mcp(dry_run=dry_run)
+    remove_windsurf_mcp(dry_run=dry_run)
+    remove_qoder_user_mcp(dry_run=dry_run)
 
 
 def main() -> int:

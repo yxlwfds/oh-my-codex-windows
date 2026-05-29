@@ -2996,6 +2996,28 @@ export async function dispatchCodexNativeHook(
   const threadId = safeString(payload.thread_id ?? payload.threadId).trim();
   const turnId = safeString(payload.turn_id ?? payload.turnId).trim();
   const currentSessionState = await readUsableSessionState(cwd);
+
+  // Detect stale session state that survived a previous crash/forced restart.
+  // When the current hook is NOT a SessionStart, proactively clear the stale
+  // session.json so the next SessionStart can rebuild a clean canonical session.
+  if (!currentSessionState && hookEventName !== "SessionStart") {
+    const rawState = await readSessionState(cwd);
+    if (rawState && !isSessionStateUsable(rawState, cwd)) {
+      try {
+        const sessionJsonPath = join(stateDir, 'session.json');
+        await writeFile(sessionJsonPath, '{}');
+        appendToLog(cwd, {
+          event: 'session_stale_repair',
+          stale_session_id: rawState.session_id,
+          stale_pid: rawState.pid,
+          timestamp: new Date().toISOString(),
+        }).catch(() => {});
+      } catch {
+        // best effort — do not block hook dispatch on state cleanup
+      }
+    }
+  }
+
   let canonicalSessionId = safeString(currentSessionState?.session_id).trim();
   let resolvedNativeSessionId = nativeSessionId;
   let skipCanonicalSessionStartContext = false;

@@ -7,6 +7,5 @@
 7. 尽量不要使用Get-Content或cat这种低效的获取文件内容的方式,优先使用Fast Context或其它高效的方式;
 8. 在powershell中使用grep的时候可以使用"rg".
 9.我是在windows11中使用,工具选择时执行的命令需要兼容.
-10.本机所有仓库默认优先使用 `ast-grep` 做语法感知搜索/结构化重写，优先使用 `semble` 做语义搜索/索引；能用时先用它们。
+10.本机所有仓库默认优先使用 Windsurf 内置的 Fast Context (LSP/grep) 做代码检索与分析；
 11.修改 `AGENTS.md` 或任何生成 `AGENTS.md` 的模板时，如果不是明确替代关系，不要删除已有的有意义内容；优先补充细化，而不是重写覆盖。
-12.同步来源以 `D:\code\my\oh-my-codex\templates\AGENTS.md` 和 `D:\code\my\oh-my-codex\templates\code-intelligence\AGENTS-entry.md` 为准。
