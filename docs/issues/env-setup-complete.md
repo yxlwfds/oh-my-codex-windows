@@ -6,7 +6,7 @@
 
 | 变量名 | 值 | 说明 |
 |--------|-----|------|
-| `DEEPSEEK_API_KEY` | `sk-d0c9...faa6` | DeepSeek API 密钥 |
+| `DEEPSEEK_API_KEY` | `sk-xxxx...xxxx` | DeepSeek API 密钥 |
 | `OMX_SUBAGENT_MODEL` | `deepseek-v4-flash` | 子代理模型 |
 | `OMX_SUBAGENT_THINKING_MODE` | `smart` | 思考模式策略 |
 | `OMX_RATE_LIMIT_CONCURRENCY` | `5` | 最大并发数 |
@@ -26,7 +26,7 @@
 如果你想在当前终端立即使用,需要手动设置:
 
 ```powershell
-$env:DEEPSEEK_API_KEY="sk-d0c9e3396036472f88a04212c5f0faa6"
+$env:DEEPSEEK_API_KEY="sk-xxxx...xxxx"  # 替换为你的真实密钥
 $env:OMX_SUBAGENT_MODEL="deepseek-v4-flash"
 $env:OMX_SUBAGENT_THINKING_MODE="smart"
 $env:OMX_RATE_LIMIT_CONCURRENCY="5"

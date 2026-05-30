@@ -8,7 +8,7 @@ Write-Host ""
 
 # 定义要设置的环境变量
 $envVars = @{
-    "DEEPSEEK_API_KEY" = "sk-d0c9e3396036472f88a04212c5f0faa6"
+    "DEEPSEEK_API_KEY" = "$env:DEEPSEEK_API_KEY"  # 从当前环境读取,请先设置此变量
     "OMX_SUBAGENT_MODEL" = "deepseek-v4-flash"
     "OMX_SUBAGENT_THINKING_MODE" = "smart"
     "OMX_RATE_LIMIT_CONCURRENCY" = "5"

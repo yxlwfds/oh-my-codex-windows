@@ -102,7 +102,6 @@ If you want plain Codex with no extra workflow layer, you probably do not need O
 - Codex CLI installed: `npm install -g @openai/codex`
 - Codex auth configured and visible in the same shell/profile that will run OMX
 - `tmux` on macOS/Linux if you want the recommended durable team runtime
-- `psmux` on native Windows only if you intentionally want the less-supported Windows team path
 
 ### A good first session
 
@@ -304,7 +303,6 @@ owx wiki refresh --json
 
 `owx team` works best on macOS/Linux with `tmux`.
 Native Windows remains a secondary path, and WSL2 is generally the better choice if you want a Windows-hosted setup.
-On native Windows, OMX accepts `psmux` as the tmux-compatible binary for the existing tmux-backed paths it already uses.
 
 | Platform | Install |
 | --- | --- |
@@ -312,7 +310,6 @@ On native Windows, OMX accepts `psmux` as the tmux-compatible binary for the exi
 | Ubuntu/Debian | `sudo apt install tmux` |
 | Fedora | `sudo dnf install tmux` |
 | Arch | `sudo pacman -S tmux` |
-| Windows | `winget install psmux` |
 | Windows (WSL2) | `sudo apt install tmux` |
 
 ## Known issues
