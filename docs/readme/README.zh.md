@@ -1,4 +1,4 @@
-# oh-my-codex (OMX)
+# 这是基于oh-my-codex (OMX)的windows版本
 
 <p align="center">
   <img src="https://yeachan-heo.github.io/oh-my-codex-website/omx-character-nobg.png" alt="oh-my-codex character" width="280">
@@ -15,16 +15,16 @@
 
 [OpenAI Codex CLI](https://github.com/openai/codex) 的多智能体编排层。
 
-## v0.9.0 新特性 — Spark Initiative
+## v0.17.0 新特性 — 协调与工作流演进
 
-Spark Initiative 是一次强化 OMX 原生探索与检查路径的版本发布。
+v0.17.0 是一个专注于全新协调与工作流界面的次要版本：
 
-- **`owx explore` 原生 harness** —— 通过 Rust 原生 harness 更快、更严格地执行只读仓库探索。
-- **`owx sparkshell`** —— 面向操作者的原生检查界面，支持长输出摘要与 tmux pane 捕获。
-- **跨平台原生发布资产** —— `omx-explore-harness`、`omx-sparkshell` 与 `native-release-manifest.json` 的 hydration 路径现已纳入发布流水线。
-- **增强的 CI/CD** —— 为 `build` job 增加显式 Rust toolchain 设置，并加入 `cargo fmt --check` 与 `cargo clippy -- -D warnings`。
+- **Hermes MCP 桥接器 (Bridge)** —— 增加了一个受限、需主动启用的 MCP 协调桥接器，用于会话列表/状态、经审计的后续分发、安全工件读取、会话启动、日志尾部查看和最终协调报告，而无需公开 tmux 回滚或原始私有状态。
+- **规范设计工作流 (Canonical Design Workflow)** —— 确立了 `DESIGN.md` 以及镜像的 `$design` 技能引导作为首要设计工作流，同时弃用了旧的 `frontend-ui-ux` 快捷方式。
+- **更完整的插件模式技能发现 (Plugin-Mode Discovery)** —— 本地 Codex 插件市场设置现已通过插件发现公开 OMX 技能，具体化并验证插件缓存，并添加插件作用域下的 MCP 元数据（包括 Hermes）。
+- **UltraQA 契约化对抗测试 (Adversarial UltraQA Contracts)** —— `$ultraqa` 引导现已强制要求进行恶意场景建模、提示词注入尝试、中断/取消/恢复测试用例、过期状态检查、必要时使用临时测试台，以及显式清理证据。
 
-详情请参阅 [v0.9.0 发布说明](../release-notes-0.9.0.md) 和 [发布正文](../release-body-0.9.0.md)。
+详情请参阅 [v0.17.0 发布说明](../release-notes-0.17.0.md) 和 [发布正文](../release-body-0.17.0.md)。
 
 ## 首次会话
 
@@ -36,6 +36,8 @@ $ralplan "approve the auth plan and review tradeoffs"
 $ralph "carry the approved plan to completion"
 $team 3:executor "execute the approved plan in parallel"
 ```
+
+使用 `$design` 在 `DESIGN.md` 中确立设计上下文，或当计划需要协调并行执行时选择 `$team`，以及在需要单一负责人持续推进到完成时选择 `$ralph`。
 
 从终端：
 
@@ -49,7 +51,7 @@ owx team shutdown <team-name>
 
 1. `$deep-interview` — 当范围或边界还不清楚时，先用它澄清需求。
 2. `$ralplan` — 把澄清后的范围整理成可批准的架构与实施计划。
-3. `$team` 或 `$ralph` — 需要协调并行执行时用 `$team`，需要单一负责人持续推进到完成并验证时用 `$ralph`。
+3. `$team`、`$ralph` 或 `$design` — 需要管理 `DESIGN.md` 设计上下文时用 `$design`，需要协调并行执行时用 `$team`，需要单一负责人持续推进到完成并验证时用 `$ralph`。
 
 ## 核心模型
 
@@ -92,6 +94,12 @@ OMX 现在包含用于插件脚手架和验证的 `owx hooks`。
 - 插件默认关闭；使用 `OMX_HOOK_PLUGINS=1` 启用。
 
 完整的扩展工作流和事件模型请参阅 `docs/hooks-extension.md`。
+
+## Hermes MCP 桥接器
+
+- `owx mcp-serve hermes` 启动受限且需主动启用的 MCP 协调桥接器。
+- 该桥接器允许外部协调器安全地列出会话、读取会话状态、查看日志尾部、检查/读取工件以及分发后续/修改操作，而无需进行原始终端抓取。
+- 详情请参阅 [Hermes MCP 桥接指南](../hermes-mcp-bridge.md) 以获取工具参考和工作目录限制策略。
 
 ## 启动标志
 

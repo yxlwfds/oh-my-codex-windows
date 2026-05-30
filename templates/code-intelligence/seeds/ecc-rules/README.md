@@ -19,6 +19,7 @@ rules/
 ├── python/          # Python specific
 ├── golang/          # Go specific
 ├── web/             # Web and frontend specific
+├── uniapp/          # UniApp (Vue 2/3 + dual-end MP & App) specific
 ├── swift/           # Swift specific
 ├── php/             # PHP specific
 ├── ruby/            # Ruby / Rails specific
@@ -39,6 +40,7 @@ rules/
 ./install.sh python
 ./install.sh golang
 ./install.sh web
+./install.sh uniapp
 ./install.sh swift
 ./install.sh php
 ./install.sh ruby
@@ -73,6 +75,7 @@ cp -r rules/angular ~/.claude/rules/ecc/
 cp -r rules/python ~/.claude/rules/ecc/
 cp -r rules/golang ~/.claude/rules/ecc/
 cp -r rules/web ~/.claude/rules/ecc/
+cp -r rules/uniapp ~/.claude/rules/ecc/
 cp -r rules/swift ~/.claude/rules/ecc/
 cp -r rules/php ~/.claude/rules/ecc/
 cp -r rules/ruby ~/.claude/rules/ecc/

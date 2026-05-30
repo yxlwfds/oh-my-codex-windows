@@ -30,7 +30,7 @@ OMX is a workflow layer for [OpenAI Codex CLI](https://github.com/openai/codex).
 It keeps Codex as the execution engine and makes it easier to:
 - start a stronger Codex session by default
 - run one consistent workflow from clarification to completion
-- invoke the canonical skills with `$deep-interview`, `$ralplan`, `$team`, and `$ralph`
+- invoke the canonical skills with `$deep-interview`, `$ralplan`, `$team`, `$ralph`, and `$design`
 - keep project guidance, plans, logs, and state in `.omx/`
 
 ## Core Maintainers
@@ -86,7 +86,7 @@ Start OMX strongly, clarify first when needed, approve the plan, then choose `$t
 ## What OMX is for
 
 Use OMX if you already like Codex and want a better day-to-day runtime around it:
-- a standard workflow built around `$deep-interview`, `$ralplan`, `$team`, and `$ralph`
+- a standard workflow built around `$deep-interview`, `$ralplan`, `$team`, `$ralph`, and `$design`
 - durable multi-goal handoffs with `$ultragoal` and `.omx/ultragoal` artifacts when a launch needs sequential Codex goals
 - specialist roles and supporting skills when the task needs them
 - project guidance through scoped `AGENTS.md`
@@ -166,7 +166,7 @@ $ralph "carry the approved plan to completion"
 $team 3:executor "execute the approved plan in parallel"
 ```
 
-Use `$team` when the approved plan needs coordinated parallel work, or `$ralph` when one persistent owner should keep pushing to completion.
+Use `$design` to establish design context in `DESIGN.md`, `$team` when the approved plan needs coordinated parallel work, or `$ralph` when one persistent owner should keep pushing to completion.
 
 ## A simple mental model
 
@@ -195,7 +195,7 @@ Most users should think of OMX as **better task routing + better workflow + bett
 
 1. `$deep-interview` — clarify scope when the request or boundaries are still vague.
 2. `$ralplan` — turn that clarified scope into an approved architecture and implementation plan.
-3. `$team` or `$ralph` — use `$team` for coordinated parallel execution, or `$ralph` when you want a persistent completion loop with one owner.
+3. `$team`, `$ralph`, or `$design` — use `$design` to manage design context in `DESIGN.md`, `$team` for coordinated parallel execution, or `$ralph` when you want a persistent completion loop with one owner.
 
 ## Common in-session surfaces
 
@@ -203,6 +203,7 @@ Most users should think of OMX as **better task routing + better workflow + bett
 | --- | --- |
 | `$deep-interview "..."` | clarifying intent, boundaries, and non-goals |
 | `$ralplan "..."` | approving the implementation plan and tradeoffs |
+| `$design "..."` | establishing repo-local `DESIGN.md` design contract |
 | `$ralph "..."` | persistent completion and verification loops |
 | `$team "..."` | coordinated parallel execution when the work is big enough |
 | `/skills` | browsing installed skills and supporting helpers |
@@ -292,6 +293,12 @@ owx wiki query --input '{"query":"session-start lifecycle"}' --json
 owx wiki lint --json
 owx wiki refresh --json
 ```
+
+### Hermes MCP bridge
+
+- `owx mcp-serve hermes` starts the bounded, opt-in MCP coordination bridge.
+- The bridge allows external coordinators to list sessions, read session status, read log tails, check/retrieve artifacts, and dispatch follow-ups/mutations safely without raw terminal scraping.
+- See [Hermes MCP bridge guide](./docs/hermes-mcp-bridge.md) for tool references and workdir restriction policies.
 
 ### Platform notes for team mode
 
