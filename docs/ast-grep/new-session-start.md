@@ -1,11 +1,3 @@
-# ast-grep 新会话起手
+# ast-grep 新会话起手（已废弃）
 
-如果是 `/new` 后接着做，先读：
-1. `D:\code\my\oh-my-codex\docs\ast-grep\resume-after-new.md`
-2. `D:\code\my\oh-my-codex\docs\ast-grep\README.md`
-
-保持原则：
-- 速查表只保留一份公共来源
-- 模板只保留一份公共来源
-- Windsurf / Qoder / 项目 AGENTS 只做薄入口
-- 后续优化优先改 `D:\code\my\oh-my-codex`，不要在项目内重复正文
+> 与 ast-grep 工具链相关的“新会话起手”说明已废弃；后续如需为其他工具链设计类似机制，请在对应工具链文档中单独编写。

@@ -343,7 +343,7 @@ describe("codex native hook dispatch", () => {
     );
   });
 
-  it("emits parseable no-op JSON stdout for inactive Stop CLI runs", async () => {
+  it("emits empty stdout for inactive Stop CLI runs", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "omx-native-hook-cli-stop-noop-json-"));
     try {
       const stdout = runNativeHookCli({
@@ -353,15 +353,13 @@ describe("codex native hook dispatch", () => {
         thread_id: "thread-cli-stop-noop-json",
         turn_id: "turn-cli-stop-noop-json",
       }, { cwd });
-      const output = parseSingleJsonStdout(stdout);
-
-      assert.deepEqual(output, {});
+      assert.equal(stdout, "");
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
   });
 
-  it("keeps Stop CLI no-op output parseable when the native hook script is temporarily unavailable", async () => {
+  it("keeps Stop CLI no-op output empty when the native hook script is temporarily unavailable", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "omx-native-hook-cli-stop-missing-script-"));
     try {
       const shell = ["pwsh", "powershell.exe", "powershell"].find((candidate) => {
@@ -403,7 +401,7 @@ describe("codex native hook dispatch", () => {
       );
 
       assert.equal(result.status, 0);
-      assert.deepEqual(parseSingleJsonStdout(String(result.stdout ?? "")), {});
+      assert.equal(String(result.stdout ?? ""), "");
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
@@ -6839,6 +6837,7 @@ exit 0
         mode: "ralplan",
         current_phase: "planning",
         session_id: sessionId,
+        latest_plan_path: join(".omx", "plans", "prd-stop-finalize.md"),
       });
       await writeJson(join(stateDir, "sessions", sessionId, "run-state.json"), {
         version: 1,
@@ -6862,6 +6861,134 @@ exit 0
 
       assert.equal(result.omxEventName, "stop");
       assert.equal(result.outputJson, null);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("finalizes active ralplan from final handoff content when planning artifacts are complete", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "omx-native-hook-stop-finalize-ralplan-"));
+    try {
+      const stateDir = join(cwd, ".omx", "state");
+      const plansDir = join(cwd, ".omx", "plans");
+      const sessionId = "sess-stop-finalize-ralplan";
+      await mkdir(join(stateDir, "sessions", sessionId), { recursive: true });
+      await mkdir(plansDir, { recursive: true });
+      await writeJson(join(stateDir, "session.json"), { session_id: sessionId });
+      await writeJson(join(stateDir, "sessions", sessionId, "skill-active-state.json"), {
+        active: true,
+        skill: "ralplan",
+        phase: "planning",
+        session_id: sessionId,
+        active_skills: [{
+          skill: "ralplan",
+          phase: "planning",
+          active: true,
+          session_id: sessionId,
+        }],
+      });
+      await writeJson(join(stateDir, "sessions", sessionId, "ralplan-state.json"), {
+        active: true,
+        mode: "ralplan",
+        current_phase: "planning",
+        session_id: sessionId,
+        latest_plan_path: join(".omx", "plans", "prd-stop-finalize.md"),
+      });
+      await writeFile(join(plansDir, "prd-stop-finalize.md"), "# PRD\n");
+      await writeFile(join(plansDir, "test-spec-stop-finalize.md"), "# Test Spec\n");
+
+      const result = await dispatchCodexNativeHook(
+        {
+          hook_event_name: "Stop",
+          cwd,
+          session_id: sessionId,
+          last_assistant_message: [
+            "ADR",
+            "available-agent-types roster",
+            "Goal-Mode Follow-up Suggestions",
+          ].join("\n"),
+        },
+        { cwd },
+      );
+
+      assert.equal(result.omxEventName, "stop");
+      assert.equal(result.outputJson, null);
+
+      const finalized = JSON.parse(
+        await readFile(join(stateDir, "sessions", sessionId, "ralplan-state.json"), "utf-8"),
+      ) as {
+        active?: boolean;
+        current_phase?: string;
+        run_outcome?: string;
+        planning_complete?: boolean;
+        final_artifact?: string;
+      };
+      assert.equal(finalized.active, false);
+      assert.equal(finalized.current_phase, "completed");
+      assert.equal(finalized.run_outcome, "finish");
+      assert.equal(finalized.planning_complete, true);
+      assert.equal(finalized.final_artifact, "approved_handoff");
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("does not finalize active ralplan from unrelated repo planning artifacts", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "omx-native-hook-stop-finalize-ralplan-stale-artifacts-"));
+    try {
+      const stateDir = join(cwd, ".omx", "state");
+      const plansDir = join(cwd, ".omx", "plans");
+      const sessionId = "sess-stop-finalize-ralplan-stale-artifacts";
+      await mkdir(join(stateDir, "sessions", sessionId), { recursive: true });
+      await mkdir(plansDir, { recursive: true });
+      await writeJson(join(stateDir, "session.json"), { session_id: sessionId });
+      await writeJson(join(stateDir, "sessions", sessionId, "skill-active-state.json"), {
+        active: true,
+        skill: "ralplan",
+        phase: "planning",
+        session_id: sessionId,
+        active_skills: [{
+          skill: "ralplan",
+          phase: "planning",
+          active: true,
+          session_id: sessionId,
+        }],
+      });
+      await writeJson(join(stateDir, "sessions", sessionId, "ralplan-state.json"), {
+        active: true,
+        mode: "ralplan",
+        current_phase: "planning",
+        session_id: sessionId,
+        latest_plan_path: join(".omx", "plans", "prd-current.md"),
+      });
+      await writeFile(join(plansDir, "prd-old.md"), "# Old PRD\n");
+      await writeFile(join(plansDir, "test-spec-old.md"), "# Old Test Spec\n");
+      await writeFile(join(plansDir, "prd-current.md"), "# Current PRD\n");
+
+      const result = await dispatchCodexNativeHook(
+        {
+          hook_event_name: "Stop",
+          cwd,
+          session_id: sessionId,
+          last_assistant_message: [
+            "ADR",
+            "available-agent-types roster",
+            "Goal-Mode Follow-up Suggestions",
+          ].join("\n"),
+        },
+        { cwd },
+      );
+
+      assert.equal(result.omxEventName, "stop");
+      assert.equal(result.outputJson?.decision, "block");
+      assert.equal(result.outputJson?.stopReason, "skill_ralplan_planning_continue_artifact");
+
+      const persisted = JSON.parse(
+        await readFile(join(stateDir, "sessions", sessionId, "ralplan-state.json"), "utf-8"),
+      ) as { active?: boolean; current_phase?: string; planning_complete?: boolean };
+      assert.equal(persisted.active, true);
+      assert.equal(persisted.current_phase, "planning");
+      assert.notEqual(persisted.planning_complete, true);
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }

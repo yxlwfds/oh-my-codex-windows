@@ -1,12 +1,3 @@
-# ast-grep One-Command Sync
+# ast-grep One-Command Sync（已废弃）
 
-Run:
-
-```powershell
-.\scripts\ast-grep\sync_ast_grep_toolchain.ps1
-```
-
-This syncs:
-- Codex skills
-- DeepSeek TUI defaults
-- oh-my-codex ast-grep templates
+> 原有的一键同步脚本说明已废弃；如仍需维护某个工具链的一键同步脚本，请在该工具链的专属文档中单独描述。

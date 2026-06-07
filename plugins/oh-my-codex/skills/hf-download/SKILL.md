@@ -133,7 +133,7 @@ print(f'\nDownloaded to: {snapshot_dir}')
 │           └── ...
 ```
 
-`sentence-transformers` 和 `cocoindex` 等库会自动从此目录加载模型。
+诸如 `sentence-transformers` 等库会自动从此目录加载模型。
 
 ## 故障排查
 

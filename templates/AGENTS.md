@@ -61,12 +61,12 @@ Keep runtime marker contracts stable and non-destructive when overlays are appli
 - For cleanup/refactor/deslop work, write a cleanup plan and lock behavior with regression tests before editing when coverage is missing.
 - Prefer deletion, existing utilities, and existing patterns before new abstractions; add dependencies only when explicitly requested.
 - When editing `AGENTS.md` or any template that generates it, preserve meaningful existing content unless the new text is an explicit replacement; prefer additive refinement over deletion.
-- When the code-intelligence toolchain is available, default to Windsurf's built-in Fast Context (LSP/grep) for quick codebase traversal and symbol lookup first. Upgrade to `ast-grep` for syntax-aware rewrite/structural search or `semble_rs` (Rust-optimized semantic search at `D:\code\my\semble_rs\target\release\semble_rs.exe`) for complex or abstract semantic searches when built-in methods are insufficient.
+- When the code-intelligence toolchain is available, default to Windsurf's built-in Fast Context (LSP/grep) for quick codebase traversal and symbol lookup first. Upgrade to `ast-grep` for syntax-aware rewrite/structural search when built-in methods are insufficient；避免在全局约定中强推额外的语义搜索二进制工具。
 - Code search workflow:
   - Start with built-in Fast Context (LSP/grep) to resolve explicit symbols, exact file paths, or short queries.
-  - For abstract or natural-language behavior/intent queries, upgrade to `semble_rs search` (or `D:\code\my\semble_rs\target\release\semble_rs.exe search`).
-  - Inspect full files only when the returned chunk is not enough context.
-  - Optionally use `semble_rs find-related` (or `D:\code\my\semble_rs\target\release\semble_rs.exe find-related`) with a promising result's `file_path` and `line` to find related implementations.
+  - For abstract or natural-language behavior/intent queries, first refine Fast Context queries or switch to `ast-grep` for syntax-aware patterns；如仍明显不足，再参考本仓文档中约定的其他语义检索工具（如果存在）。
+  - Inspect full files only when the returned chunk is not enough context。
+  - Optionally use any project-local semantic search utilities that are explicitly documented in this repo; do not assume a specific binary in global guidance。
 - Keep diffs small, reviewable, and reversible.
 - **Network proxy**: When accessing GitHub, npm, PyPI, or any foreign/overseas site (via `curl`, `fetch`, `search_web`, or shell commands), set the HTTP/HTTPS proxy to `http://127.0.0.1:8087`. Example: `$env:HTTPS_PROXY="http://127.0.0.1:8087"` (PowerShell) or `HTTPS_PROXY=http://127.0.0.1:8087` (bash/shell).
 - Verify with lint, typecheck, tests, and static analysis after changes; final reports include changed files, simplifications, and remaining risks.
@@ -394,12 +394,10 @@ Execute `owx setup` to install all components. Execute `owx doctor` to verify in
 ## code-intelligence toolchain
 
 - `ast-grep`: use `sg` / `ast-grep` for syntax-aware search and rewrite.
-- `semble_rs`: use `semble_rs search` and `semble_rs find-related` for semantic code search. Command is `semble_rs` or absolute path `D:\code\my\semble_rs\target\release\semble_rs.exe`.
-  - **Fast Context Dual-Track Router**:
-    - **Fast Track (LSP/grep)**: **Default First Priority**. Always attempt to locate code symbols, exact file names, or short queries (< 30 chars) using the IDE's built-in LSP, grep, or fast context first.
-    - **Semantic Track (semble_rs)**: For abstract natural language, fuzzy intent, or complex logical queries where Fast Track fails or is insufficient, upgrade to the `semble_rs` command with `--use-sketches` (e.g., `semble_rs search "YOUR_QUERY" . --use-sketches`). It utilizes LLM signature translation and RRF multi-way fusion, automatically ignoring noise via the similarity cutoff (`MIN_SEMANTIC_SIMILARITY: 0.25`).
+- **Fast Context Router**:
+  - **Fast Track (LSP/grep)**: **Default First Priority**. Always attempt to locate code symbols, exact file names, or short queries (< 30 chars) using the IDE's built-in LSP, grep, or fast context first。
+  - When Fast Context is not enough, use `ast-grep` for syntax-aware structural search；如需其他语义检索工具，由具体项目在自身文档中约定。
 - When editing `AGENTS.md` or any template that generates it, preserve meaningful existing content unless this entry is explicitly replacing that section.
 
 Public docs:
 - `D:\code\my\oh-my-codex\docs\ast-grep\README.md`
-- `D:\code\my\oh-my-codex\docs\semble\README.md`

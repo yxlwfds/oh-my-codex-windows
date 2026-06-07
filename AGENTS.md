@@ -61,12 +61,13 @@ Keep runtime marker contracts stable and non-destructive when overlays are appli
 - For cleanup/refactor/deslop work, write a cleanup plan and lock behavior with regression tests before editing when coverage is missing.
 - Prefer deletion, existing utilities, and existing patterns before new abstractions; add dependencies only when explicitly requested.
 - When editing `AGENTS.md` or any template that generates it, preserve meaningful existing content unless the new text is an explicit replacement; prefer additive refinement over deletion.
-- When the code-intelligence toolchain is available, default to Windsurf's built-in Fast Context (LSP/grep) for quick codebase traversal and symbol lookup first. Upgrade to `ast-grep` for syntax-aware rewrite/structural search or `semble_rs` (Rust-optimized semantic search at `D:\code\my\semble_rs\target\release\semble_rs.exe`) for complex or abstract semantic searches when built-in methods are insufficient.
+- When the code-intelligence toolchain is available, default to Windsurf's built-in Fast Context (LSP/grep) for quick codebase traversal and symbol lookup first；如需更复杂的结构化检索或重写，优先使用本仓文档中约定的项目内工具，不在全局约定中绑定具体二进制。
 - Code search workflow:
   - Start with built-in Fast Context (LSP/grep) to resolve explicit symbols, exact file paths, or short queries.
-  - For abstract or natural-language behavior/intent queries, upgrade to `semble_rs search` (or `D:\code\my\semble_rs\target\release\semble_rs.exe search`).
+  - For abstract or natural-language behavior/intent queries, first refine Fast Context queries；如仍明显不足，再参考本仓文档中约定的其他检索/结构化重写工具（如果存在）。
   - Inspect full files only when the returned chunk is not enough context.
-  - Optionally use `semble_rs find-related` (or `D:\code\my\semble_rs\target\release\semble_rs.exe find-related`) with a promising result's `file_path` and `line` to find related implementations.
+  - Optionally use any project-local search / semantic search utilities that are explicitly documented in this repo; do not assume a specific binary in global guidance.
+- Bracket-path handling: when paths contain literal square brackets such as `[locale]`, `[slug]`, or `[...all]`, treat them as special-character paths rather than glob patterns. In PowerShell, prefer `-LiteralPath 'path/with/[brackets]'` and place the parameter before the value. In `rg`, prefer quoted paths and escape brackets in regex patterns when matching the literal filename text. In `git`, prefer quoting path arguments and use `--` before paths when disambiguation helps.
 - Keep diffs small, reviewable, and reversible.
 - Verify with lint, typecheck, tests, and static analysis after changes; final reports include changed files, simplifications, and remaining risks.
 - **Build-deploy rule**: any change to `src/config/codex-hooks.ts` (PowerShell shim generation), `src/scripts/codex-native-hook.ts` (Node hook stdin/stdout), or `scripts/verify-hook-integrity.cjs` (integrity checks) MUST be followed by `npm run build:deploy`, which rebuilds dist, force-deploys the latest shim to `./.codex/hooks/omx-native-hook-windows-shim.ps1`, and runs 7 integrity checks (OpenStandardInput, ToBase64String, StandardInputEncoding, StandardOutputEncoding, StandardErrorEncoding, Base64 decode, Buffer.from). Do NOT manually copy the shim after such changes; run the full pipeline.
@@ -393,12 +394,10 @@ Execute `owx setup` to install all components. Execute `owx doctor` to verify in
 ## code-intelligence toolchain
 
 - `ast-grep`: use `sg` / `ast-grep` for syntax-aware search and rewrite.
-- `semble_rs`: use `semble_rs search` and `semble_rs find-related` for semantic code search. Command is `semble_rs` or absolute path `D:\code\my\semble_rs\target\release\semble_rs.exe`.
-  - **Fast Context Dual-Track Router**:
-    - **Fast Track (LSP/grep)**: **Default First Priority**. Always attempt to locate code symbols, exact file names, or short queries (< 30 chars) using the IDE's built-in LSP, grep, or fast context first.
-    - **Semantic Track (semble_rs)**: For abstract natural language, fuzzy intent, or complex logical queries where Fast Track fails or is insufficient, upgrade to the `semble_rs` command with `--use-sketches` (e.g., `semble_rs search "YOUR_QUERY" . --use-sketches`). It utilizes LLM signature translation and RRF multi-way fusion, automatically ignoring noise via the similarity cutoff (`MIN_SEMANTIC_SIMILARITY: 0.25`).
+- **Fast Context Router**:
+  - **Fast Track (LSP/grep)**: **Default First Priority**. Always attempt to locate code symbols, exact file names, or short queries (< 30 chars) using the IDE's built-in LSP, grep, or fast context first。
+  - When Fast Context is not enough, use `ast-grep` for syntax-aware structural search；如需其他语义检索工具，由具体项目在自身文档中约定。
 - When editing `AGENTS.md` or any template that generates it, preserve meaningful existing content unless this entry is explicitly replacing that section.
 
 Public docs:
 - `D:\code\my\oh-my-codex\docs\ast-grep\README.md`
-- `D:\code\my\oh-my-codex\docs\semble\README.md`

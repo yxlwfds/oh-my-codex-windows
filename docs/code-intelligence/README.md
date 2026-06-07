@@ -1,17 +1,3 @@
-# Code Intelligence Toolchain
+# Code Intelligence Toolchain（占位）
 
-Source of truth for the `ast-grep` + `semble` toolchain.
-
-```powershell
-.\scripts\code-intelligence\install_code_intelligence_toolchain.ps1
-.\scripts\code-intelligence\install_code_intelligence_toolchain.ps1 -ProjectRoot D:\path\to\repo
-```
-
-Installs:
-
-- `.codex/skills`
-- `.windsurf/skills`
-- `.qoder/skills`
-- project-local agent bridge entries when supported
-
-Global roots: Codex `$CODEX_HOME\skills`, Windsurf `$CODEIUM_HOME\windsurf\skills`, Qoder `$QODER_HOME\skills`.
+> 本仓库不再提供统一的 ast-grep / semble / semble_rs 代码智能工具链安装说明或脚本入口。后续如需在某个项目中接入代码智能工具链（无论是基于 Fast Context、语法树搜索还是语义检索），请在该项目自己的文档中单独设计和记录，不依赖本文件。

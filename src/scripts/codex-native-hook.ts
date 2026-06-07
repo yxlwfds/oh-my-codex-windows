@@ -97,6 +97,8 @@ import {
   isFinalHandoffDocumentRefreshCandidate,
 } from "../document-refresh/enforcer.js";
 import { buildExecFollowupStopOutput } from "../exec/followup.js";
+import { readPlanningArtifacts } from "../planning/artifacts.js";
+import { selectMatchingTestSpecsForPrd } from "../planning/artifact-names.js";
 
 type CodexHookEventName =
   | "SessionStart"
@@ -132,6 +134,11 @@ const STABLE_FINAL_RECOMMENDATION_PATTERNS = [
   /^\s*ready to release\s*:\s*(?:yes|no)\b[^\n\r]*/im,
   /^\s*(?:final\s+)?recommendation\s*:\s*(?:yes|no|ship|hold|release|do not release|proceed|do not proceed)\b[^\n\r]*/im,
   /^\s*decision\s*:\s*(?:yes|no|ship|hold|release|do not release|proceed|do not proceed)\b[^\n\r]*/im,
+] as const;
+const RALPLAN_FINAL_HANDOFF_PATTERNS = [
+  /\bgoal-mode\s+follow-up\s+suggestions\b/i,
+  /\bavailable-agent-types\s+roster\b/i,
+  /\badr\b/i,
 ] as const;
 const RELEASE_READINESS_FINALIZE_SYSTEM_MESSAGE =
   "OMX release-readiness detected a stable final recommendation with no active worker tasks; emit one concise final decision summary and finalize.";
@@ -2211,6 +2218,62 @@ function buildRalplanContinuationStatus(
   };
 }
 
+function looksLikeRalplanFinalHandoff(message: string): boolean {
+  const text = safeString(message).trim();
+  if (!text) return false;
+  return RALPLAN_FINAL_HANDOFF_PATTERNS.every((pattern) => pattern.test(text));
+}
+
+async function maybeFinalizeRalplanFromStopContext(
+  payload: CodexHookPayload,
+  cwd: string,
+  sessionId: string,
+): Promise<boolean> {
+  const state = await readModeStateForActiveDecision("ralplan", sessionId, cwd);
+  if (!state || state.active !== true) return false;
+  if (getRunContinuationSnapshot(state)?.terminal === true) return false;
+
+  const phase = safeString(state.current_phase ?? state.currentPhase).trim().toLowerCase();
+  if (!["planning", "review", "architect-review", "critic-review"].includes(phase)) return false;
+
+  const lastAssistantMessage = safeString(payload.last_assistant_message ?? payload.lastAssistantMessage);
+  if (!looksLikeRalplanFinalHandoff(lastAssistantMessage)) return false;
+
+  const latestPlanPath = safeString(state.latest_plan_path ?? state.latestPlanPath).trim();
+  if (!latestPlanPath) return false;
+
+  const planningArtifacts = readPlanningArtifacts(cwd);
+  const latestPlanResolvedCandidates = [...new Set([
+    resolve(latestPlanPath),
+    resolve(cwd, latestPlanPath),
+    resolve(planningArtifacts.plansDir, latestPlanPath),
+  ])];
+  const currentPrdPath = planningArtifacts.prdPaths.find((candidatePath) => (
+    latestPlanResolvedCandidates.includes(resolve(candidatePath))
+  ));
+  if (!currentPrdPath) return false;
+
+  const matchingTestSpecs = selectMatchingTestSpecsForPrd(currentPrdPath, planningArtifacts.testSpecPaths);
+  if (matchingTestSpecs.length === 0) return false;
+
+  await updateModeState(
+    "ralplan",
+    {
+      active: false,
+      current_phase: "completed",
+      completed_at: new Date().toISOString(),
+      planning_complete: true,
+      run_outcome: "finish",
+      latest_plan_path: currentPrdPath,
+      final_artifact: safeString(state.final_artifact).trim() || "approved_handoff",
+      status_message: "Status: complete — ralplan final handoff emitted and planning artifacts are ready for execution handoff.",
+    },
+    cwd,
+    sessionId,
+  );
+  return true;
+}
+
 async function readStopAutoNudgePhase(
   cwd: string,
   stateDir: string,
@@ -2540,7 +2603,12 @@ async function buildSkillStopOutput(
   stateDir: string,
   sessionId: string,
   threadId: string,
+  payload?: CodexHookPayload,
 ): Promise<Record<string, unknown> | null> {
+  if (payload && await maybeFinalizeRalplanFromStopContext(payload, cwd, sessionId)) {
+    return null;
+  }
+
   const blocker = await readBlockingSkillForStop(cwd, stateDir, sessionId, threadId);
   if (!blocker) return null;
 
@@ -2866,7 +2934,7 @@ async function buildStopHookOutput(
         if (repeatedCanonicalTeamOutput) return repeatedCanonicalTeamOutput;
       }
 
-      const skillOutput = await buildSkillStopOutput(cwd, stateDir, canonicalSessionId, threadId);
+      const skillOutput = await buildSkillStopOutput(cwd, stateDir, canonicalSessionId, threadId, payload);
       if (skillOutput) {
         return await returnPersistentStopBlock(
           payload,
@@ -3427,6 +3495,10 @@ function writeNativeHookJsonStdout(output: Record<string, unknown>): void {
   }
 }
 
+function writeNativeHookNoopStdout(): void {
+  process.stdout.write("");
+}
+
 function extractJsonErrorPosition(errorMessage: string): number | null {
   // 从错误消息中提取位置信息，例如 "at position 123" 或 "column 45"
   const positionMatch = errorMessage.match(/position\s+(\d+)/i);
@@ -3514,7 +3586,7 @@ export async function runCodexNativeHookCli(): Promise<void> {
     if (result.outputJson) {
       writeNativeHookJsonStdout(result.outputJson);
     } else if (result.hookEventName === "Stop") {
-      writeNativeHookJsonStdout({});
+      writeNativeHookNoopStdout();
     } else {
       // SessionStart / UserPromptSubmit: always emit at least {} so Codex
       // never sees empty stdout (which triggers "invalid ... JSON output").

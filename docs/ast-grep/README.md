@@ -1,14 +1,3 @@
-# ast-grep
+# ast-grep（已废弃）
 
-Public entry points:
-- Quick table: `docs/ast-grep/quick-commands.md`
-- Templates: `templates/ast-grep/`
-- Sync script: `scripts/ast-grep/sync_ast_grep_toolchain.ps1`
-- Windsurf entry: `docs/ast-grep/windsurf-entry.md`
-- Qoder entry: `docs/ast-grep/qoder-entry.md`
-- Combined toolchain: `docs/code-intelligence/README.md`
-
-New project flow:
-1. Copy `templates/ast-grep/AGENTS-entry.md` into the new repo root `AGENTS.md`.
-2. Use the public quick table in `docs/ast-grep/quick-commands.md`.
-3. Run the sync script when you need to refresh Codex/DeepSeek defaults.
+> 本仓库不再提供 ast-grep / semble / semble_rs 工具链的官方文档或安装入口。本文件仅作为占位，避免旧链接报错；如需代码搜索或结构化重写，请在具体项目文档中自行约定和记录所用工具。

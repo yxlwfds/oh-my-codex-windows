@@ -1,8 +1,8 @@
 ---
 name: ast-grep
-description: Use ast-grep for syntax-aware code search and batch structural replacement across source files.
+description: (deprecated) ast-grep toolchain docs have been removed from this repo; this skill is kept only as a compatibility stub.
 ---
-# ast-grep
+# ast-grep（已废弃）
 
-See the public entry in `D:\code\my\oh-my-codex\docs\ast-grep\README.md`.
+> 本技能仅作为兼容性占位，提醒 ast-grep 工具链在本仓库中已废弃，不再作为推荐入口使用。
 

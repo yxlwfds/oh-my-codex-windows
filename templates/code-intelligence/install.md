@@ -78,7 +78,7 @@
 - **前端约束**：`docs/agents/frontend-conventions.md` — 操作前端代码时读取
 
 ## 基础约束
-- 表实体继承公共基类，不使用物理外键。
+- 数据库建模与约束策略（是否使用物理外键、是否统一继承公共基类等）由本项目在 `docs/agents/backend-conventions.md` 中统一约定，避免生搬硬套其它项目规则。
 - 架构设计优先考虑稳定性和可恢复性。
 - 核心逻辑保持高鲁棒性，空值检查、边界条件防御。
 
@@ -172,7 +172,7 @@ Write-Host "AGENTS.md initialized successfully!" -ForegroundColor Green
 3. **`database-migrations/`（专属高安全同步规约）**：
    - 提取自 `tmp\ECC-main\skills\database-migrations\`。
    - **Windsurf 黄金重构**：**彻底删除了与本项目无关的 Prisma, Drizzle, Kysely, Django, Go 等冗余技术栈（减少 70% 的 Token 垃圾噪音）**。
-   - **强力新增**：完全适配 MySQL / PolarDB-X 分布式大表高危 DDL 检查（大表自动分区改造、绝对禁止物理外键）；完美融入本项目的自动 IP 白名单自愈同步脚本 `script/sql/sync_guang_he_app.py` 的自动化操作与验证规约！
+   - **强力新增**：完全适配 MySQL / PolarDB-X 分布式大表高危 DDL 检查（大表自动分区改造，并在该 seed 中采用“避免物理外键”的微服务建模策略）；完美融入本项目的自动 IP 白名单自愈同步脚本 `script/sql/sync_guang_he_app.py` 的自动化操作与验证规约！
 
 这些完美的、没有任何冗余的多语言和数据库安全高阶资产，已全部安全离线沉淀至：
 📂 `.windsurf/seeds/` 下（已在 `.gitignore` 中放开限制，可直接提交至 Git 随项目流转！）。

@@ -1,22 +1,3 @@
-# ast-grep quick commands
+# ast-grep quick commands（已废弃）
 
-1. Java exception pattern
-```bash
-sg --lang java -p 'new ServiceException($$$)' .
-```
-2. Java null-check pattern
-```bash
-sg --lang java -p 'if ($COND == null) { $$$ }' .
-```
-3. MyBatis XML select
-```bash
-sg --lang xml -p '<select $$$> $$$ </select>' .
-```
-4. UniApp / TS console log
-```bash
-sg --lang ts -p 'console.log($$$)' .
-```
-5. Bulk rewrite + verify
-```bash
-sg --lang java -p 'oldCall($$$)' -r 'newCall($$$)' . && sg --lang java -p 'oldCall($$$)' .
-```
+> 这里原本存放 ast-grep 的示例命令，目前已废弃，不再作为统一工具链文档维护。若仍需使用，请在具体项目仓库中维护本地化版本。

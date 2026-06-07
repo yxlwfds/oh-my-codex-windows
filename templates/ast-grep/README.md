@@ -1,16 +1,3 @@
-# ast-grep
+# ast-grep 模板（已废弃）
 
-Public templates:
-- `AGENTS-entry.md`
-- `ast-grep-new-project-template.md`
-
-Public quick table:
-- `D:\code\my\oh-my-codex\docs\ast-grep\quick-commands.md`
-
-Windsurf entry:
-- `D:\code\my\oh-my-codex\docs\ast-grep\windsurf-entry.md`
-
-Qoder entry:
-- `D:\code\my\oh-my-codex\docs\ast-grep\qoder-entry.md`
-
-Use `AGENTS-entry.md` as the root AGENTS snippet for new repos.
+> 本目录下的 ast-grep 模板不再作为新项目的推荐接入方式。若仍需使用，请在具体项目中自行复制并维护专属版本；全局仓库不再提供官方 ast-grep 工具链文档与入口。

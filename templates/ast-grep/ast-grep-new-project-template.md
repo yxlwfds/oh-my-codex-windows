@@ -1,4 +1,3 @@
-# ast-grep new project template
+# ast-grep new project template（已废弃）
 
-Use the public quick commands from `docs/ast-grep/quick-commands.md`.
-Copy `AGENTS-entry.md` into the new repo root `AGENTS.md`, then sync Codex/DeepSeek if needed.
+> 本模板不再用于新项目初始化。请在具体项目中根据自身需要设计代码搜索/重写方案，并在项目文档中记录，而不是依赖全局 ast-grep 工具链。
