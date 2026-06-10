@@ -628,10 +628,9 @@ export function resolveExploreEnv(
     [EXPLORE_ACTIVE_ENV]: '1',
   };
 
-  // 集成子代理: 如果全局未禁用 (--nds),则探索模式默认使用子代理
-  // 这样可以节省主代理 token,同时利用缓存加速重复任务
+  // 未显式配置时,探索模式跟随全局默认原生路径,避免隐式切到 DeepSeek 子代理
   if (!Object.hasOwn(env, 'OMX_SUBAGENT_MODE') || !env.OMX_SUBAGENT_MODE) {
-    baseEnv.OMX_SUBAGENT_MODE = 'subagent';
+    baseEnv.OMX_SUBAGENT_MODE = 'native';
   }
 
   return baseEnv;

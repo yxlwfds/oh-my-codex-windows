@@ -61,7 +61,7 @@ async function statusCommand(): Promise<void> {
   console.log();
 
   // 运行模式
-  const currentMode = process.env.OMX_SUBAGENT_MODE || 'subagent';
+  const currentMode = process.env.OMX_SUBAGENT_MODE || 'native';
   console.log(chalk.cyan('运行模式:'));
   console.log(`   OMX_SUBAGENT_MODE: ${currentMode === 'subagent' ? '子代理模式 (DeepSeek) 🤖' : '原生模式 (本地执行) 🖥️'}`);
   console.log();
@@ -132,8 +132,8 @@ async function executeCommand(args: string[]): Promise<void> {
   const oIdx = outputIdx !== -1 ? outputIdx : outputIdxLong;
   const outputFile = oIdx !== -1 ? cleanArgs[oIdx + 1] : undefined;
 
-  // 确定最终模式: --mode 参数 > 环境变量 > 默认值
-  const finalMode = modeFromArgs || (process.env.OMX_SUBAGENT_MODE?.trim().toLowerCase() === 'native' ? 'native' : 'subagent');
+  // 确定最终模式: --mode 参数 > 环境变量 > 默认值(native)
+  const finalMode = modeFromArgs || (process.env.OMX_SUBAGENT_MODE?.trim().toLowerCase() === 'subagent' ? 'subagent' : 'native');
 
   try {
     // 检查当前模式

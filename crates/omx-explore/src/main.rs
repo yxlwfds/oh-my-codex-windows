@@ -210,13 +210,8 @@ fn should_use_subagent() -> bool {
     // 检查环境变量
     let subagent_mode = env::var("OMX_SUBAGENT_MODE").unwrap_or_default();
     
-    // 如果明确设置为 native,则不使用子代理
-    if subagent_mode.to_lowercase() == "native" {
-        return false;
-    }
-    
-    // 如果设置为 subagent,或者未设置(默认使用子代理)
-    subagent_mode.to_lowercase() == "subagent" || subagent_mode.is_empty()
+    // 只有明确设置为 subagent 时才启用子代理
+    subagent_mode.to_lowercase() == "subagent"
 }
 
 fn print_attempt_output(attempt: AttemptResult) -> Result<(), String> {

@@ -66,14 +66,6 @@ describe("plugin bundle SSOT contract", () => {
 			await readFile(join(root, "plugins", "oh-my-codex", ".mcp.json"), "utf-8"),
 		) as { mcpServers?: Record<string, { enabled?: boolean }> };
 		for (const [name, server] of Object.entries(pluginMcp.mcpServers ?? {})) {
-			if (name === "omx_subagent") {
-				assert.equal(
-					server.enabled,
-					true,
-					"omx_subagent ships enabled-by-default (Terminus-4B-style delegation MCP tool)",
-				);
-				continue;
-			}
 			assert.equal(
 				server.enabled,
 				false,
@@ -82,17 +74,9 @@ describe("plugin bundle SSOT contract", () => {
 		}
 	});
 
-	it("builds disabled plugin MCP metadata by default except for the subagent delegation tool", () => {
+	it("builds disabled plugin MCP metadata by default", () => {
 		const defaultManifest = buildOmxPluginMcpManifest();
 		for (const [name, server] of Object.entries(defaultManifest.mcpServers)) {
-			if (name === "omx_subagent") {
-				assert.equal(
-					server.enabled,
-					true,
-					"omx_subagent ships enabled-by-default (Terminus-4B-style delegation MCP tool)",
-				);
-				continue;
-			}
 			assert.equal(
 				server.enabled,
 				false,

@@ -13,10 +13,10 @@ export type SubagentMode = 'subagent' | 'native';
  */
 export function getSubagentMode(): SubagentMode {
   const mode = process.env.OMX_SUBAGENT_MODE?.trim().toLowerCase();
-  if (mode === 'native') {
-    return 'native';
+  if (mode === 'subagent') {
+    return 'subagent';
   }
-  return 'subagent'; // 默认使用子代理模式
+  return 'native'; // 默认使用原生模式
 }
 
 /**
